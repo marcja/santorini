@@ -43,9 +43,11 @@ Separate offline app; the AI teaches itself via adversarial self-play.
       parent → self-play → train → child loop. gen-001 is at parity with
       the hand eval (gauntlet 793 vs 817; 15–9 head-to-head).
 - [ ] Learned evaluation v2: iterate generations until the gauntlet trend
-      rises; then policy priors (PUCT), regularization, symmetry
-      augmentation, and GPU/WebGPU or ONNX only if pure TS becomes the
-      bottleneck.
+      rises; then policy priors (PUCT), regularization, and GPU/WebGPU or
+      ONNX only if pure TS becomes the bottleneck. (Progress: gen-002 hit
+      the plateau; 8-symmetry augmentation broke it — gen-002-aug beat
+      gen-001 19–5, gauntlet 841, lineage best — and is now the default
+      recipe.)
 - [x] Checkpoint format + rating harness: versioned JSON artifacts
       (`santorini-checkpoint@1`: generation, parent, eval weights, search
       config, Elo record) in `models/`; trainer CLI (`init`/`match`/

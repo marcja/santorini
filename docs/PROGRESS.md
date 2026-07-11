@@ -1,6 +1,6 @@
 # Progress
 
-_Last updated: 2026-07-11 (session 4)_
+_Last updated: 2026-07-11 (session 5)_
 
 ## Done
 
@@ -66,14 +66,26 @@ _Last updated: 2026-07-11 (session 4)_
   lr=0.2 × 10 epochs. Gauntlet 793 (gen-000: 817 — parity within the ±100
   noise); head-to-head 15–9 over gen-000 at full settings (62.5%, ≈+89 Elo).
 
+- **Gen-002 plateaued; 8-symmetry augmentation broke the plateau (this
+  session).** `gen-002.json` (net-driven self-play, same recipe) gauntleted
+  781 and went 12–12 vs gen-001 — flat. First plateau lever: `augmentSamples`
+  in `packages/ai/src/features.ts` (8 dihedral permutations of the 25-square
+  planes; verified against encoding transformed states), trainer `--augment`
+  flag. Controlled experiment — identical self-play games (deterministic
+  seed), augmentation the only difference: `gen-002-aug.json` beat gen-002
+  15–9 (+89 Elo), beat gen-001 **19–5 (+232 Elo)**, gauntlet **841** (lineage
+  best; 10–10 vs mcts(1000)). Augmented training loss 0.62 vs 0.58 — the 8×
+  data regularizes, staying in the mild-fit zone. `--augment` is now the
+  default recipe; gen-003+ trains from gen-002-aug.
+
 ## Next
 
-1. Iterate generations: `train --parent models/gen-001.json` (self-play now
-   uses the net eval) for gen-002+; check the gauntlet trend actually rises
-   before investing in bigger runs. Likely levers when it plateaus: more
-   games per generation, policy priors (PUCT) so search stops expanding
-   uniformly, L2/early-stop regularization, symmetry augmentation (8 board
-   symmetries).
+1. Iterate generations with the augmented recipe:
+   `train --parent models/gen-002-aug.json --augment` for gen-003+ (gen-003
+   run in flight at session end); keep checking the gauntlet trend rises.
+   Remaining levers if it plateaus again: more games per generation, policy
+   priors (PUCT) so search stops expanding uniformly, L2/early-stop
+   regularization.
 2. Web slice 2: god-power selection UI (engine supports it; UI is base-only),
    generic multi-step turn input (Artemis paths, Demeter double builds,
    Prometheus pre-build) — UI currently assumes path len 2 / 1 build.
