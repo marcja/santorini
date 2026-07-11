@@ -1,7 +1,7 @@
 export { resolveTurn, type AiPlayer } from './player.ts';
 export { mulberry32, pick, type Rng } from './rng.ts';
 export { evaluate, DEFAULT_EVAL_WEIGHTS, EVAL_SCALE, type EvalFn, type EvalWeights } from './eval.ts';
-export { encodeFeatures, FEATURE_COUNT } from './features.ts';
+export { encodeFeatures, transformFeatures, augmentSamples, FEATURE_COUNT, SYMMETRY_MAPS } from './features.ts';
 export { Mlp, type MlpParams, type Sample, type TrainOptions } from './mlp.ts';
 export {
   CHECKPOINT_FORMAT,

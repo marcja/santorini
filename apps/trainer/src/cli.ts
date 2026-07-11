@@ -14,6 +14,7 @@ import { parseArgs } from 'node:util';
 import {
   FEATURE_COUNT,
   Mlp,
+  augmentSamples,
   checkpointEvalFn,
   createCheckpoint,
   selfPlay,
@@ -34,8 +35,8 @@ const USAGE = `usage:
                     [--update]
   trainer train     [--parent models/gen-000.json] [--out models/gen-NNN.json] [--games 200]
                     [--seed 1] [--iters PARENT] [--temp-turns 8] [--max-half-turns 400]
-                    [--hidden 64] [--epochs 10] [--lr 0.2] [--batch 64] [--sgn FILE]
-                    [--notes TEXT] [--force]
+                    [--hidden 64] [--epochs 10] [--lr 0.2] [--batch 64] [--augment]
+                    [--sgn FILE] [--notes TEXT] [--force]
 
 player specs: random | greedy | mcts:ITERS[,c=F][,depth=N] | ckpt:PATH[,iters=N]
 (the --players pool is space-separated because specs may contain commas)`;
@@ -295,6 +296,8 @@ function cmdTrain(args: string[]): void {
       epochs: { type: 'string', default: '10' },
       lr: { type: 'string', default: '0.2' },
       batch: { type: 'string', default: '64' },
+      // 8 board symmetries per sample — 8× data, teaches symmetry-invariance.
+      augment: { type: 'boolean', default: false },
       sgn: { type: 'string' },
       notes: { type: 'string' },
       force: { type: 'boolean', default: false },
@@ -351,7 +354,9 @@ function cmdTrain(args: string[]): void {
     parent.eval.type === 'mlp@1'
       ? new Mlp(parent.eval.params)
       : Mlp.init(FEATURE_COUNT, int('hidden', values.hidden), seed + 999);
-  const losses = net.train(result.samples, {
+  const samples = values.augment ? augmentSamples(result.samples) : result.samples;
+  if (values.augment) console.log(`augmented to ${samples.length} samples (8 symmetries)`);
+  const losses = net.train(samples, {
     epochs,
     batchSize: int('batch', values.batch),
     lr: float('lr', values.lr),
@@ -364,7 +369,10 @@ function cmdTrain(args: string[]): void {
     parent: values.parent,
     eval: { type: 'mlp@1', params: net.toParams() },
     search: parent.search,
-    notes: values.notes ?? `self-play ${games} games @ mcts(${iterations}) from ${values.parent}`,
+    notes:
+      values.notes ??
+      `self-play ${games} games @ mcts(${iterations}) from ${values.parent}` +
+        (values.augment ? '; 8-symmetry augmentation' : ''),
   });
   writeJson(out, ckpt);
   console.log(`wrote ${out} (gen ${generation}, mlp ${net.hiddenSize} hidden)`);
