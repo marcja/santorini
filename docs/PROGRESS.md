@@ -86,24 +86,44 @@ _Last updated: 2026-07-11 (session 5)_
 
 ## Next
 
-1. Iterate generations with the augmented recipe:
-   `train --parent models/gen-003.json --augment` for gen-004+; keep checking
-   the gauntlet trend rises. Head-to-head parent matches are already even at
-   500 games/gen, so the next levers are likely needed now: more games per
-   generation, policy priors (PUCT) so search stops expanding uniformly,
-   L2/early-stop regularization.
-2. Web slice 2: god-power selection UI (engine supports it; UI is base-only),
+**Sequencing decision (2026-07-11):** cap AI training at a bounded
+intermediate goal, then switch to finishing the web game; return to
+open-ended AI iteration (PUCT priors, more games/gen, better hardware)
+afterward, informed by what slice 3 teaches us about in-browser constraints.
+Rationale: nothing in web slices 2–4 depends on further AI strength — the
+difficulty ladder wants *varied* strength and we already have calibrated
+rungs (random 0 / mcts(200) 657 / greedy 808 / gen-003 903).
+
+1. Chore: TypeScript 5.8 → 6 → 7 upgrade (GitHub issue #1). TS 6.0 GA'd
+   2026-03, TS 7.0 (Go-native compiler) GA'd 2026-07-08. Our tsconfig uses
+   none of the 6.0 deprecations (no baseUrl, ES2022 target, bundler
+   resolution), so expect a clean two-step bump; park at 6 if 7 misbehaves
+   (GA is days old). Note: TS7 speeds *typecheck/editor only* — training
+   runtime is unaffected. First PR under the new branch/PR workflow.
+2. Bounded AI goal: gen-004 and gen-005 with the existing augmented recipe
+   (`train --parent ... --augment`) — pure compute, no new AI code. Stop
+   early if a checkpoint clears mcts(1000) at ≥65% over ≥20 games. Then
+   freeze 3–4 ladder checkpoints as difficulty levels and stop training.
+   PUCT priors / more games/gen / regularization are explicitly deferred
+   to the post-web return.
+3. Web slice 2: god-power selection UI (engine supports it; UI is base-only),
    generic multi-step turn input (Artemis paths, Demeter double builds,
    Prometheus pre-build) — UI currently assumes path len 2 / 1 build.
-3. Web slice 3: vs-AI play — engine+ai are pure TS, so `MctsPlayer` runs
+4. Web slice 3: vs-AI play — engine+ai are pure TS, so `MctsPlayer` runs
    in-browser as-is (load `models/gen-XXX.json` via `playerFromCheckpoint`);
    AI-vs-AI at controllable rate; then coach layer.
+5. Return to AI: PUCT priors (policy head over full-turn actions), more
+   games/generation, regularization — sized against slice-3 realities
+   (per-move time budget, worker-thread search).
 
 ## Decisions / notes
 
 - Harness: a PostToolUse hook (`.claude/settings.json`) fires on every edit to
   this file and reminds to reconcile `docs/PLAN.md` checkboxes (sync rule at
   the top of PLAN.md). Keep both files consistent in the same commit.
+- Workflow (2026-07-11): development moves to branches/worktrees + PRs; main
+  is protected from direct commits (branch protection enabled by Marc in
+  GitHub settings — Claude must not modify repo access controls).
 
 - TS monorepo, engine pure, full-turn atomic actions (see PLAN.md).
 - Node v25, npm 11. Dev server: browser preview tool, launch config `web`

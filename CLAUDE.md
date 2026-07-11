@@ -42,6 +42,8 @@ learned:
 - Gods are generator plugins in `packages/engine/src/gods/`; base rules
   never special-case a god by name outside that directory.
 - Small, narrative commits. Vertical slices over horizontal layers.
+- Work on branches/worktrees and merge via PRs — never commit directly to
+  `main` (protected). Branch names: `chore/…`, `feat/…`, `fix/…`.
 - UI changes are not done until played through the in-app browser
   (screenshot + clicks), not just typechecked.
 - Delegate mechanical, well-specified work (bulk test writing, doc extraction,

@@ -47,8 +47,11 @@ Separate offline app; the AI teaches itself via adversarial self-play.
       ONNX only if pure TS becomes the bottleneck. (Progress: gen-002 hit
       the plateau; 8-symmetry augmentation broke it — gen-002-aug beat
       gen-001 19–5 — and is now the default recipe. Gauntlet trend rising:
-      781 → 841 → 903 through gen-003. Next levers: PUCT priors, more
-      games/gen.)
+      781 → 841 → 903 through gen-003. **Sequencing decision 2026-07-11:
+      bounded push only — gen-004/005 on the existing recipe, stop early
+      if ≥65% vs mcts(1000) over ≥20 games, freeze the ladder, then switch
+      to web slices 2–3. PUCT/more-games/regularization deferred to the
+      post-web return.**)
 - [x] Checkpoint format + rating harness: versioned JSON artifacts
       (`santorini-checkpoint@1`: generation, parent, eval weights, search
       config, Elo record) in `models/`; trainer CLI (`init`/`match`/
@@ -60,7 +63,9 @@ Separate offline app; the AI teaches itself via adversarial self-play.
       threats found) that the coach layer turns into human explanations.
       (Started: `search()` already returns visits/values/PV; threat
       extraction and narration pending.)
-- [ ] Strength ladder: frozen checkpoints at increasing strength = difficulty levels.
+- [ ] Strength ladder: frozen checkpoints at increasing strength = difficulty
+      levels. (Next up: freeze 3–4 rungs from the calibrated pool + gen-004/005
+      at the end of the bounded push.)
 
 ## Deliverable 3 — Web game (`apps/web`)
 
@@ -86,6 +91,10 @@ Separate offline app; the AI teaches itself via adversarial self-play.
 4. **Recoverable sessions**: `docs/PROGRESS.md` is the single source of truth
    for state + next steps; update it before ending any work session.
 5. **Token economy**: delegate mechanical/parallelizable work to Sonnet subagents.
+6. **Protected trunk** (since 2026-07-11): all development on branches/worktrees,
+   merged to `main` via PRs; no direct commits to `main`. Toolchain: TypeScript 7
+   (Go-native compiler) once issue #1 lands — typecheck-speed win only; runtime
+   perf is unaffected.
 
 ## Architecture decisions
 
