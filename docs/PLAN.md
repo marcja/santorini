@@ -46,12 +46,12 @@ Separate offline app; the AI teaches itself via adversarial self-play.
       rises; then policy priors (PUCT), regularization, and GPU/WebGPU or
       ONNX only if pure TS becomes the bottleneck. (Progress: gen-002 hit
       the plateau; 8-symmetry augmentation broke it — gen-002-aug beat
-      gen-001 19–5 — and is now the default recipe. Gauntlet trend rising:
-      781 → 841 → 903 through gen-003. **Sequencing decision 2026-07-11:
-      bounded push only — gen-004/005 on the existing recipe, stop early
-      if ≥65% vs mcts(1000) over ≥20 games, freeze the ladder, then switch
-      to web slices 2–3. PUCT/more-games/regularization deferred to the
-      post-web return.**)
+      gen-001 19–5 — and is now the default recipe. **Bounded push done
+      2026-07-11**: gen-004/005 trained on the existing recipe; neither
+      cleared 65% vs mcts(1000), but head-to-heads rose monotonically —
+      gen-005 beat gen-003 17–7 (+154 Elo). Ladder frozen, training
+      paused. Remaining scope — PUCT priors, more games/gen,
+      regularization — resumes after web slices 2–3.)
 - [x] Checkpoint format + rating harness: versioned JSON artifacts
       (`santorini-checkpoint@1`: generation, parent, eval weights, search
       config, Elo record) in `models/`; trainer CLI (`init`/`match`/
@@ -63,9 +63,11 @@ Separate offline app; the AI teaches itself via adversarial self-play.
       threats found) that the coach layer turns into human explanations.
       (Started: `search()` already returns visits/values/PV; threat
       extraction and narration pending.)
-- [ ] Strength ladder: frozen checkpoints at increasing strength = difficulty
-      levels. (Next up: freeze 3–4 rungs from the calibrated pool + gen-004/005
-      at the end of the bounded push.)
+- [x] Strength ladder: frozen checkpoints at increasing strength = difficulty
+      levels. `models/ladder.json` (`santorini-ladder@1`): Beginner=random(0),
+      Easy=mcts:200(657), Medium=greedy(808), Hard=ckpt:gen-005(841; strongest
+      by head-to-head). New rungs may be appended after the post-web
+      training return.
 
 ## Deliverable 3 — Web game (`apps/web`)
 

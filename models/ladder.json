@@ -1,0 +1,11 @@
+{
+  "format": "santorini-ladder@1",
+  "frozenAt": "2026-07-11T22:37:53.831Z",
+  "notes": "Difficulty ladder frozen at the end of the bounded AI push (PROGRESS.md, 2026-07-11). Ratings are gauntlet/calibration Elo (random = 0, ±~100 noise at 20-40 game samples). Top rung is gen-005: gauntlet 841, but head-to-head it beat gen-004 13-11, gen-003 17-7 (70.8%, +154 Elo) - the strongest checkpoint in the lineage. Training resumes post-web (PUCT priors etc.); new rungs may be appended then.",
+  "levels": [
+    { "name": "Beginner", "spec": "random", "rating": 0 },
+    { "name": "Easy", "spec": "mcts:200", "rating": 657 },
+    { "name": "Medium", "spec": "greedy", "rating": 808 },
+    { "name": "Hard", "spec": "ckpt:models/gen-005.json", "rating": 841 }
+  ]
+}
