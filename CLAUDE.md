@@ -49,3 +49,10 @@ learned:
 
 - macOS here has no poppler/pdftotext; a pypdf venv lives in the scratchpad.
   PDF text is already extracted to `docs/reference/*.txt` — use those.
+- The in-app browser viewport can reflow between screenshots (layout
+  breakpoint change), silently shifting click coordinates. Before a long
+  scripted click sequence, take a fresh screenshot and recalibrate; verify
+  state (page text or screenshot) every few actions, and prefer reading the
+  on-page SGN record to confirm the engine received the intended moves.
+- Shell cwd persists across Bash calls in a session; don't assume repo root —
+  use absolute paths for git/npm commands.
