@@ -23,11 +23,11 @@ function checkInvariants(gods: [GodId, GodId], seed: number): void {
 }
 
 describe('random playout invariants', () => {
-  it('base game terminates cleanly across many seeds', () => {
+  it('base game terminates cleanly across many seeds', { timeout: 60_000 }, () => {
     for (let seed = 1; seed <= 25; seed++) checkInvariants(['none', 'none'], seed);
   });
 
-  it('every god vs base game', () => {
+  it('every god vs base game', { timeout: 60_000 }, () => {
     for (const god of GOD_IDS) {
       for (let seed = 1; seed <= 5; seed++) {
         checkInvariants([god, 'none'], seed);
@@ -36,7 +36,7 @@ describe('random playout invariants', () => {
     }
   });
 
-  it('all god pairings', () => {
+  it('all god pairings', { timeout: 60_000 }, () => {
     const gods = GOD_IDS.filter((g) => g !== 'none');
     for (const g1 of gods) {
       for (const g2 of gods) {

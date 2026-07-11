@@ -59,6 +59,10 @@ learned:
   on-page SGN record to confirm the engine received the intended moves.
 - Shell cwd persists across Bash calls in a session; don't assume repo root —
   use absolute paths for git/npm commands.
+- Running `npm test` while heavy trainer jobs run in the background can flake
+  search-heavy tests past vitest's 5s default timeout. Rerun quietly (or wait
+  for the jobs) before believing a failure; give multi-game tests explicit
+  `{ timeout: ... }` headroom.
 - Don't judge AI-player strength on 6-game matches: during MCTS tuning,
   6-game samples flipped the mcts-vs-greedy conclusion twice. Use ≥20 seeded
   games (scratchpad probe scripts) before believing a strength delta, and

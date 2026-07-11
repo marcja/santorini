@@ -47,7 +47,7 @@ describe('MctsPlayer', () => {
     expect(turnKey(a)).toBe(turnKey(b));
   });
 
-  it('beats random', () => {
+  it('beats random', { timeout: 30_000 }, () => {
     const result = playMatch(
       new MctsPlayer({ iterations: 150, seed: 3 }),
       new RandomPlayer(4),
