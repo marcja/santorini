@@ -37,16 +37,21 @@ Separate offline app; the AI teaches itself via adversarial self-play.
 - [x] Baseline opponents: random, greedy-heuristic (immediate wins/blocks, height).
 - [x] Search player: MCTS over the engine's full-turn moves (UCT + one-ply
       win/loss solver + short eval-scored playouts; mcts(2000) ≈83% vs greedy).
-- [ ] Learned evaluation: small policy/value network (pure TS/ndarray first;
-      GPU/WebGPU or ONNX later), trained by self-play (AlphaZero-style).
-      (Seam ready: `MctsPlayer` takes an injected `EvalFn`.)
+- [x] Learned evaluation v1: pure-TS value net (175-plane encoding, 64
+      ReLU hidden, SGD on self-play outcomes) as checkpoint eval `mlp@1`,
+      plugged into MCTS via `EvalFn`; trainer `train` command runs the
+      parent → self-play → train → child loop. gen-001 is at parity with
+      the hand eval (gauntlet 793 vs 817; 15–9 head-to-head).
+- [ ] Learned evaluation v2: iterate generations until the gauntlet trend
+      rises; then policy priors (PUCT), regularization, symmetry
+      augmentation, and GPU/WebGPU or ONNX only if pure TS becomes the
+      bottleneck.
 - [x] Checkpoint format + rating harness: versioned JSON artifacts
       (`santorini-checkpoint@1`: generation, parent, eval weights, search
       config, Elo record) in `models/`; trainer CLI (`init`/`match`/
-      `calibrate`/`gauntlet`) with Bradley–Terry-calibrated baselines
+      `calibrate`/`gauntlet`/`train`) with Bradley–Terry-calibrated baselines
       (random=0, mcts(200)=657, greedy=808, mcts(1000)=923) and SGN game
-      dumps. Remaining for "resumable training": the training loop itself
-      (load latest checkpoint, improve, save next generation).
+      dumps (self-play dumps replay-verified).
 - [ ] Explainability channel: the AI must not just pick moves — it exposes
       search statistics (visit counts, value estimates, principal variation,
       threats found) that the coach layer turns into human explanations.

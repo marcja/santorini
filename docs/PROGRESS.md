@@ -1,6 +1,6 @@
 # Progress
 
-_Last updated: 2026-07-11 (session 3)_
+_Last updated: 2026-07-11 (session 4)_
 
 ## Done
 
@@ -47,12 +47,33 @@ _Last updated: 2026-07-11 (session 3)_
   i.e. ±~100 Elo noise at these sample sizes — don't read strength deltas
   below that from a single gauntlet.
 
+- **Learned evaluation v1 (this session): value net + self-play training
+  pipeline, first net generation at parity with the hand eval.**
+  `packages/ai`: `features.ts` (encoding v1: 175 binary planes — 5×25 height
+  one-hot + mover/opponent worker planes, always from the player to move's
+  perspective; other perspective = negate the logit); `mlp.ts` (1-hidden-layer
+  ReLU net, seeded He init, mini-batch SGD on BCE, JSON params);
+  `selfplay.ts` (seeded self-play with visit-proportional sampling for the
+  first N half-turns — without it every game repeats the same opening);
+  checkpoint eval type `mlp@1` alongside `static@1` (`checkpointEvalFn`
+  returns logit×`EVAL_SCALE`, so MCTS's sigmoid recovers the net's win
+  probability exactly). Trainer `train` command: parent checkpoint →
+  self-play → train → child checkpoint (continues training a net parent;
+  fresh net from a static parent). 96 tests green; self-play SGN dumps
+  verified to replay through the engine with matching results.
+- **`models/gen-001.json` (committed): first `mlp@1` checkpoint.** Trained
+  from gen-000's static eval: 500 self-play games @ mcts(600), 15.3k samples,
+  lr=0.2 × 10 epochs. Gauntlet 793 (gen-000: 817 — parity within the ±100
+  noise); head-to-head 15–9 over gen-000 at full settings (62.5%, ≈+89 Elo).
+
 ## Next
 
-1. Learned evaluation (small policy/value net, pure TS) to replace the
-   hand-rolled `evaluate()`; trained by self-play (trainer's SGN dumps +
-   checkpoint format are the I/O for this), plugged into MCTS via `EvalFn`;
-   new checkpoint eval type alongside `static@1`.
+1. Iterate generations: `train --parent models/gen-001.json` (self-play now
+   uses the net eval) for gen-002+; check the gauntlet trend actually rises
+   before investing in bigger runs. Likely levers when it plateaus: more
+   games per generation, policy priors (PUCT) so search stops expanding
+   uniformly, L2/early-stop regularization, symmetry augmentation (8 board
+   symmetries).
 2. Web slice 2: god-power selection UI (engine supports it; UI is base-only),
    generic multi-step turn input (Artemis paths, Demeter double builds,
    Prometheus pre-build) — UI currently assumes path len 2 / 1 build.
@@ -71,6 +92,14 @@ _Last updated: 2026-07-11 (session 3)_
   (port 5173).
 - UI interaction model is worth keeping: all click affordances derive from
   `legalTurns()` filtering, so god-power UI can reuse the same pattern.
+- Net-training lessons (session 4): **mild fitting beats heavy fitting in
+  play.** Nets trained to low train-loss (lr 0.5, 20–40 epochs, loss →
+  0.08–0.36) *lost* to lightly-trained ones (lr 0.2, 10 epochs, loss ~0.62)
+  despite better test accuracy — overconfident logits saturate the playout
+  values MCTS averages. Sweep hyperparameters offline by regenerating samples
+  from the self-play SGN dump (replay is ~instant; self-play is the slow
+  part). Self-play is fully deterministic per seed: same config → identical
+  games and samples. ~0.6 s/game at mcts(600); 500 games ≈ 5–10 min.
 - MCTS lessons (session 2): full-length uniform playouts carry almost no
   signal — MCTS was only at parity with greedy even at 4k iterations. What
   mattered, in order: (1) one-ply solver — mark a node "proven" when its
