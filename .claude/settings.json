@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=$(jq -r \".tool_input.file_path // empty\"); case \"$f\" in *docs/PROGRESS.md) echo \"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"PostToolUse\\\",\\\"additionalContext\\\":\\\"docs/PROGRESS.md was modified: reconcile the checkboxes in docs/PLAN.md so the roadmap matches, ideally in the same commit (sync rule in docs/PLAN.md).\\\"}}\";; esac",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

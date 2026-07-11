@@ -30,6 +30,10 @@ _Last updated: 2026-07-11 (session 1)_
 
 ## Decisions / notes
 
+- Harness: a PostToolUse hook (`.claude/settings.json`) fires on every edit to
+  this file and reminds to reconcile `docs/PLAN.md` checkboxes (sync rule at
+  the top of PLAN.md). Keep both files consistent in the same commit.
+
 - TS monorepo, engine pure, full-turn atomic actions (see PLAN.md).
 - Node v25, npm 11. Dev server: browser preview tool, launch config `web`
   (port 5173).

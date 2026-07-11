@@ -8,7 +8,10 @@ TypeScript monorepo (npm workspaces): `packages/engine` (headless rules),
 
 - `docs/PROGRESS.md` — current state, what works, next steps. **Update it
   before ending a work session.**
-- `docs/PLAN.md` — deliverable roadmap and architecture decisions.
+- `docs/PLAN.md` — deliverable roadmap and architecture decisions. **Its
+  checkboxes must stay in sync with PROGRESS.md — reconcile them in the same
+  commit whenever PROGRESS.md changes.** A PostToolUse hook in
+  `.claude/settings.json` reminds you on every PROGRESS.md edit.
 - `docs/NOTATION.md` — SGN game notation spec (engine implements this).
 
 ## Ground truth for rules

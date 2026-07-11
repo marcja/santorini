@@ -5,23 +5,30 @@ Santorini strategy and lets them compete against a self-trained (non-LLM) AI.
 
 We build in vertical slices: race to something playable end-to-end, then iterate.
 
+> **Sync rule (harness-enforced):** the checkboxes below must reflect
+> `docs/PROGRESS.md`. Whenever PROGRESS.md changes, reconcile this file in the
+> same commit. A PostToolUse hook (`.claude/settings.json`) reminds on every
+> PROGRESS.md edit.
+
 ## Deliverable 1 — Game engine (`packages/engine`)
 
 High-performance, headless, dependency-free TypeScript library.
 
 - [x] Official rules grounded in `docs/reference/rulebook.txt` and
       `docs/reference/god-powers-detailed.txt` (extracted from PDFs in `references/`).
-- [ ] Base 2-player game: 5×5 board, place 2 workers each, move+build turns,
+- [x] Base 2-player game: 5×5 board, place 2 workers each, move+build turns,
       win by moving up onto level 3, lose when unable to move+build.
-- [ ] Full-turn move generation (a "move" for engine consumers = complete turn),
-      designed for fast search (typed arrays, in-place apply/undo).
-- [ ] Notation system ("SGN" — Santorini Game Notation, see `docs/NOTATION.md`):
+- [x] Full-turn move generation (a "move" for engine consumers = complete turn),
+      designed for fast search (typed arrays, in-place apply).
+- [x] Notation system ("SGN" — Santorini Game Notation, see `docs/NOTATION.md`):
       document, annotate, and replay games; PGN-style headers.
-- [ ] God Powers: opt-in per game, per-player god assignment. Framework of hooks
-      so gods compose with move generation. Simple gods first (the hibiscus 10),
-      then advanced/Golden Fleece/Hero powers later as needed.
-- [ ] Complete test coverage of rules, gods, notation round-trips, and
-      random-playout invariants; perft-style determinism counts; benchmark.
+- [x] God Powers framework (opt-in per game, per-player assignment) with 9 of
+      the simple 10: Apollo, Artemis, Athena, Atlas, Demeter, Hephaestus,
+      Minotaur, Pan, Prometheus.
+- [ ] Hermes (needs a design pass for both-workers unlimited flat movement),
+      then advanced/Golden Fleece/Hero powers as needed.
+- [x] Test coverage of rules, gods, notation round-trips, and random-playout
+      invariants (46 tests); bench ~5.5k games/s, ~308k turns/s.
 
 ## Deliverable 2 — Self-play AI + training harness (`packages/ai`, `apps/trainer`)
 
@@ -41,9 +48,12 @@ Separate offline app; the AI teaches itself via adversarial self-play.
 
 ## Deliverable 3 — Web game (`apps/web`)
 
-- [ ] Slice 1: pass-and-play PvP, minimalist flat 2D overhead board (SVG),
-      click to place/move/build, win detection. **Playable ASAP.**
-- [ ] Slice 2: game record panel (SGN), undo, replay.
+- [x] Slice 1: pass-and-play PvP, minimalist flat 2D overhead board (SVG),
+      click to place/move/build, win detection — verified by playing a full
+      game through the in-app browser. Includes live SGN record and undo.
+- [ ] Slice 2: replay/analysis view; god-power selection UI and generic
+      multi-step turn input (Artemis paths, Demeter double builds,
+      Prometheus pre-build).
 - [ ] Slice 3: vs-AI using a persisted model artifact; AI-vs-AI at controllable rate.
 - [ ] Slice 4: coach — explains goals/plans/threats/countermoves, not just best
       moves; beginner/intermediate/advanced lesson content.
