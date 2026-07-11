@@ -59,3 +59,7 @@ learned:
   on-page SGN record to confirm the engine received the intended moves.
 - Shell cwd persists across Bash calls in a session; don't assume repo root —
   use absolute paths for git/npm commands.
+- Don't judge AI-player strength on 6-game matches: during MCTS tuning,
+  6-game samples flipped the mcts-vs-greedy conclusion twice. Use ≥20 seeded
+  games (scratchpad probe scripts) before believing a strength delta, and
+  set test thresholds well below the observed win rate.

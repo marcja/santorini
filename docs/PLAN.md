@@ -34,8 +34,9 @@ High-performance, headless, dependency-free TypeScript library.
 
 Separate offline app; the AI teaches itself via adversarial self-play.
 
-- [ ] Baseline opponents: random, greedy-heuristic (immediate wins/blocks, height).
-- [ ] Search player: MCTS over the engine's full-turn moves.
+- [x] Baseline opponents: random, greedy-heuristic (immediate wins/blocks, height).
+- [x] Search player: MCTS over the engine's full-turn moves (UCT + one-ply
+      win/loss solver + short eval-scored playouts; mcts(2000) ≈83% vs greedy).
 - [ ] Learned evaluation: small policy/value network (pure TS/ndarray first;
       GPU/WebGPU or ONNX later), trained by self-play (AlphaZero-style).
 - [ ] Resumable training: checkpoints are versioned artifacts (JSON/binary weights
@@ -44,6 +45,8 @@ Separate offline app; the AI teaches itself via adversarial self-play.
 - [ ] Explainability channel: the AI must not just pick moves — it exposes
       search statistics (visit counts, value estimates, principal variation,
       threats found) that the coach layer turns into human explanations.
+      (Started: `search()` already returns visits/values/PV; threat
+      extraction and narration pending.)
 - [ ] Strength ladder: frozen checkpoints at increasing strength = difficulty levels.
 
 ## Deliverable 3 — Web game (`apps/web`)
