@@ -1,0 +1,72 @@
+{
+  "format": "santorini-baselines@1",
+  "calibratedAt": "2026-07-11T18:04:49.088Z",
+  "seed": 1,
+  "gamesPerPair": 40,
+  "players": [
+    {
+      "name": "random",
+      "spec": "random",
+      "rating": 0
+    },
+    {
+      "name": "greedy",
+      "spec": "greedy",
+      "rating": 808.430393780075
+    },
+    {
+      "name": "mcts(200)",
+      "spec": "mcts:200",
+      "rating": 657.246660334486
+    },
+    {
+      "name": "mcts(1000)",
+      "spec": "mcts:1000",
+      "rating": 922.7150243869022
+    }
+  ],
+  "results": [
+    {
+      "a": "random",
+      "b": "greedy",
+      "winsA": 0,
+      "winsB": 40,
+      "draws": 0
+    },
+    {
+      "a": "random",
+      "b": "mcts(200)",
+      "winsA": 0,
+      "winsB": 40,
+      "draws": 0
+    },
+    {
+      "a": "random",
+      "b": "mcts(1000)",
+      "winsA": 0,
+      "winsB": 40,
+      "draws": 0
+    },
+    {
+      "a": "greedy",
+      "b": "mcts(200)",
+      "winsA": 27,
+      "winsB": 13,
+      "draws": 0
+    },
+    {
+      "a": "greedy",
+      "b": "mcts(1000)",
+      "winsA": 15,
+      "winsB": 25,
+      "draws": 0
+    },
+    {
+      "a": "mcts(200)",
+      "b": "mcts(1000)",
+      "winsA": 5,
+      "winsB": 35,
+      "draws": 0
+    }
+  ]
+}

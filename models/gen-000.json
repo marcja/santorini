@@ -1,0 +1,53 @@
+{
+  "format": "santorini-checkpoint@1",
+  "generation": 0,
+  "createdAt": "2026-07-11T18:03:08.849Z",
+  "parent": null,
+  "eval": {
+    "type": "static@1",
+    "weights": {
+      "heightScore": [
+        0,
+        30,
+        100,
+        40,
+        0
+      ],
+      "centerWeight": 5,
+      "climbWeight": 8
+    }
+  },
+  "search": {
+    "iterations": 1000,
+    "c": 1,
+    "playoutDepth": 8
+  },
+  "elo": {
+    "rating": 817,
+    "games": 80,
+    "perOpponent": {
+      "random": {
+        "wins": 20,
+        "losses": 0,
+        "draws": 0
+      },
+      "greedy": {
+        "wins": 8,
+        "losses": 12,
+        "draws": 0
+      },
+      "mcts(200)": {
+        "wins": 15,
+        "losses": 5,
+        "draws": 0
+      },
+      "mcts(1000)": {
+        "wins": 9,
+        "losses": 11,
+        "draws": 0
+      }
+    },
+    "ratedAt": "2026-07-11T18:05:35.481Z"
+  },
+  "notes": "gen 0: hand-tuned static eval + MCTS(1000)"
+}

@@ -1,6 +1,6 @@
 import type { GameState, Player, Turn } from '@santorini/engine';
 import { applyTurnInPlace, cloneState, legalTurns } from '@santorini/engine';
-import { evaluate } from './eval.ts';
+import { evaluate, type EvalFn } from './eval.ts';
 import { resolveTurn, type AiPlayer } from './player.ts';
 import { mulberry32, pick, type Rng } from './rng.ts';
 
@@ -16,6 +16,10 @@ export interface MctsOptions {
    * playouts scored by evaluate() are far stronger per iteration.
    */
   playoutDepth?: number;
+  /** Horizon evaluator (default: the static eval) — where a learned eval plugs in. */
+  evaluate?: EvalFn;
+  /** Display name (default `mcts(<iterations>)`). */
+  name?: string;
 }
 
 /** Maps evaluate()'s scale onto (0,1) via a sigmoid. */
@@ -65,14 +69,16 @@ export class MctsPlayer implements AiPlayer {
   private readonly iterations: number;
   private readonly c: number;
   private readonly playoutDepth: number;
+  private readonly evalFn: EvalFn;
   private rand: Rng;
 
   constructor(opts: MctsOptions = {}) {
     this.iterations = opts.iterations ?? 1000;
     this.c = opts.c ?? 1.0;
     this.playoutDepth = opts.playoutDepth ?? 8;
+    this.evalFn = opts.evaluate ?? evaluate;
     this.rand = mulberry32(opts.seed ?? 1);
-    this.name = `mcts(${this.iterations})`;
+    this.name = opts.name ?? `mcts(${this.iterations})`;
   }
 
   chooseTurn(state: GameState): Turn {
@@ -190,7 +196,7 @@ export class MctsPlayer implements AiPlayer {
       applyTurnInPlace(s, winning ?? pick(this.rand, turns));
     }
     if (s.phase === 'over') return s.winner === 0 ? 1 : 0;
-    return 1 / (1 + Math.exp(-evaluate(s, 0) / EVAL_SCALE));
+    return 1 / (1 + Math.exp(-this.evalFn(s, 0) / EVAL_SCALE));
   }
 }
 
