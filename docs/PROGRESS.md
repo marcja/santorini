@@ -77,15 +77,21 @@ _Last updated: 2026-07-11 (session 5)_
   best; 10–10 vs mcts(1000)). Augmented training loss 0.62 vs 0.58 — the 8×
   data regularizes, staying in the mild-fit zone. `--augment` is now the
   default recipe; gen-003+ trains from gen-002-aug.
+- **`models/gen-003.json` (committed): trend confirmed rising under the
+  augmented recipe.** Trained from gen-002-aug (500 games @ mcts(600), seed 3,
+  augment). Gauntlet **903** — lineage: 817 → 793 → 781 → 841 → 903, flat
+  until augmentation, rising since (18–2 vs mcts(200), 10–10 vs mcts(1000)).
+  Head-to-head vs parent even at 12–12/24 though — per-generation gains are
+  modest; expect to need the next levers (PUCT priors, more games) soon.
 
 ## Next
 
 1. Iterate generations with the augmented recipe:
-   `train --parent models/gen-002-aug.json --augment` for gen-003+ (gen-003
-   run in flight at session end); keep checking the gauntlet trend rises.
-   Remaining levers if it plateaus again: more games per generation, policy
-   priors (PUCT) so search stops expanding uniformly, L2/early-stop
-   regularization.
+   `train --parent models/gen-003.json --augment` for gen-004+; keep checking
+   the gauntlet trend rises. Head-to-head parent matches are already even at
+   500 games/gen, so the next levers are likely needed now: more games per
+   generation, policy priors (PUCT) so search stops expanding uniformly,
+   L2/early-stop regularization.
 2. Web slice 2: god-power selection UI (engine supports it; UI is base-only),
    generic multi-step turn input (Artemis paths, Demeter double builds,
    Prometheus pre-build) — UI currently assumes path len 2 / 1 build.
