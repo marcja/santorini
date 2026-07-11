@@ -1,6 +1,6 @@
 # Progress
 
-_Last updated: 2026-07-11 (session 2)_
+_Last updated: 2026-07-11 (session 3)_
 
 ## Done
 
@@ -27,17 +27,38 @@ _Last updated: 2026-07-11 (session 2)_
   mcts(1000) ≈65% vs greedy; mcts(2000) 10–2 (~7s). All players seeded
   and deterministic.
 
+- **`apps/trainer` CLI + checkpoint format (this session).**
+  `packages/ai` additions: `evaluate()` takes `EvalWeights`; `MctsPlayer`
+  accepts an injected `EvalFn` (the seam the learned eval will plug into);
+  `checkpoint.ts` — versioned JSON artifact (`santorini-checkpoint@1`:
+  generation, parent, eval weights, search config, Elo record) with
+  create/validate/`playerFromCheckpoint`. Trainer commands:
+  `init` (gen-0 checkpoint), `match a b [--sgn file]` (seeded, seat-
+  alternating, fresh players per game; SGN dumps verified to replay through
+  the engine), `calibrate` (baseline round-robin → Bradley–Terry Elo fit →
+  `models/baselines.json`), `gauntlet ckpt:... --update` (MLE performance
+  rating vs calibrated pool, stamped into the checkpoint). 28 new tests
+  (74 total green). Player specs: `random | greedy | mcts:N[,c=,depth=] |
+  ckpt:PATH[,iters=]`.
+- **First calibration + rating in `models/`** (committed): 40 games/pair,
+  seed 1 — random=0, mcts(200)=657, greedy=808, mcts(1000)=923 (yes,
+  mcts(200) < greedy). `gen-000.json` (default weights, mcts 1000) gauntlet
+  at 20 games/opponent → 817; vs the pool's 923 for the identical config,
+  i.e. ±~100 Elo noise at these sample sizes — don't read strength deltas
+  below that from a single gauntlet.
+
 ## Next
 
-1. `apps/trainer` CLI: self-play match runner, Elo vs baselines, versioned
-   checkpoint format (JSON weights + metadata) in `models/`.
-2. Learned evaluation (small policy/value net, pure TS) to replace the
-   hand-rolled `evaluate()`; trained by self-play, plugged into MCTS.
-3. Web slice 2: god-power selection UI (engine supports it; UI is base-only),
+1. Learned evaluation (small policy/value net, pure TS) to replace the
+   hand-rolled `evaluate()`; trained by self-play (trainer's SGN dumps +
+   checkpoint format are the I/O for this), plugged into MCTS via `EvalFn`;
+   new checkpoint eval type alongside `static@1`.
+2. Web slice 2: god-power selection UI (engine supports it; UI is base-only),
    generic multi-step turn input (Artemis paths, Demeter double builds,
    Prometheus pre-build) — UI currently assumes path len 2 / 1 build.
-4. Web slice 3: vs-AI play — engine+ai are pure TS, so `MctsPlayer` runs
-   in-browser as-is; AI-vs-AI at controllable rate; then coach layer.
+3. Web slice 3: vs-AI play — engine+ai are pure TS, so `MctsPlayer` runs
+   in-browser as-is (load `models/gen-XXX.json` via `playerFromCheckpoint`);
+   AI-vs-AI at controllable rate; then coach layer.
 
 ## Decisions / notes
 

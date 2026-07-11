@@ -39,9 +39,14 @@ Separate offline app; the AI teaches itself via adversarial self-play.
       win/loss solver + short eval-scored playouts; mcts(2000) ≈83% vs greedy).
 - [ ] Learned evaluation: small policy/value network (pure TS/ndarray first;
       GPU/WebGPU or ONNX later), trained by self-play (AlphaZero-style).
-- [ ] Resumable training: checkpoints are versioned artifacts (JSON/binary weights
-      + metadata: generation, elo vs baselines, config) committed or stored in
-      `models/`. Trainer loads latest checkpoint and continues.
+      (Seam ready: `MctsPlayer` takes an injected `EvalFn`.)
+- [x] Checkpoint format + rating harness: versioned JSON artifacts
+      (`santorini-checkpoint@1`: generation, parent, eval weights, search
+      config, Elo record) in `models/`; trainer CLI (`init`/`match`/
+      `calibrate`/`gauntlet`) with Bradley–Terry-calibrated baselines
+      (random=0, mcts(200)=657, greedy=808, mcts(1000)=923) and SGN game
+      dumps. Remaining for "resumable training": the training loop itself
+      (load latest checkpoint, improve, save next generation).
 - [ ] Explainability channel: the AI must not just pick moves — it exposes
       search statistics (visit counts, value estimates, principal variation,
       threats found) that the coach layer turns into human explanations.
