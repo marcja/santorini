@@ -1,4 +1,6 @@
-import { DEFAULT_EVAL_WEIGHTS, evaluate, type EvalWeights } from './eval.ts';
+import { DEFAULT_EVAL_WEIGHTS, EVAL_SCALE, evaluate, type EvalFn, type EvalWeights } from './eval.ts';
+import { encodeFeatures, FEATURE_COUNT } from './features.ts';
+import { Mlp, type MlpParams } from './mlp.ts';
 import { MctsPlayer } from './mcts.ts';
 import type { AiPlayer } from './player.ts';
 
@@ -28,14 +30,21 @@ export interface SearchConfig {
   playoutDepth: number;
 }
 
+/**
+ * `static@1` = the linear hand eval; `mlp@1` = the learned value net over
+ * feature encoding v1 (its logit is the mover's win probability).
+ */
+export type CheckpointEval =
+  | { type: 'static@1'; weights: EvalWeights }
+  | { type: 'mlp@1'; params: MlpParams };
+
 export interface Checkpoint {
   format: typeof CHECKPOINT_FORMAT;
   generation: number;
   createdAt: string;
   /** Checkpoint file this one was trained from (null for gen 0). */
   parent: string | null;
-  /** `static@1` = the linear hand-eval; learned evals add new types. */
-  eval: { type: 'static@1'; weights: EvalWeights };
+  eval: CheckpointEval;
   /** Search settings the checkpoint plays/was rated with. */
   search: SearchConfig;
   elo: EloRating | null;
@@ -47,6 +56,9 @@ export const DEFAULT_SEARCH: SearchConfig = { iterations: 1000, c: 1.0, playoutD
 export interface CheckpointInit {
   generation?: number;
   parent?: string | null;
+  /** Full eval spec; takes precedence over `weights`. */
+  eval?: CheckpointEval;
+  /** Shorthand for a `static@1` eval. */
   weights?: EvalWeights;
   search?: SearchConfig;
   notes?: string;
@@ -59,12 +71,16 @@ export function createCheckpoint(createdAt: string, init: CheckpointInit = {}): 
     generation: init.generation ?? 0,
     createdAt,
     parent: init.parent ?? null,
-    eval: { type: 'static@1', weights: init.weights ?? DEFAULT_EVAL_WEIGHTS },
+    eval: init.eval ?? { type: 'static@1', weights: init.weights ?? DEFAULT_EVAL_WEIGHTS },
     search: init.search ?? DEFAULT_SEARCH,
     elo: null,
   };
   if (init.notes !== undefined) ckpt.notes = init.notes;
   return ckpt;
+}
+
+function numberArray(x: unknown, length: number): x is number[] {
+  return Array.isArray(x) && x.length === length && x.every((v) => typeof v === 'number');
 }
 
 /** Structurally validate parsed JSON; throws with a specific message. */
@@ -78,16 +94,32 @@ export function validateCheckpoint(data: unknown): Checkpoint {
   if (!Number.isInteger(c.generation) || c.generation < 0) fail('generation must be a non-negative integer');
   if (typeof c.createdAt !== 'string') fail('createdAt must be a string');
   if (c.parent !== null && typeof c.parent !== 'string') fail('parent must be a string or null');
-  if (c.eval?.type !== 'static@1') fail(`unknown eval type ${JSON.stringify(c.eval?.type)}`);
-  const w = c.eval.weights;
-  if (
-    !Array.isArray(w?.heightScore) ||
-    w.heightScore.length !== 5 ||
-    !w.heightScore.every((x) => typeof x === 'number') ||
-    typeof w.centerWeight !== 'number' ||
-    typeof w.climbWeight !== 'number'
-  ) {
-    fail('eval.weights must have heightScore[5], centerWeight, climbWeight');
+  if (c.eval?.type === 'static@1') {
+    const w = c.eval.weights;
+    if (
+      !numberArray(w?.heightScore, 5) ||
+      typeof w.centerWeight !== 'number' ||
+      typeof w.climbWeight !== 'number'
+    ) {
+      fail('eval.weights must have heightScore[5], centerWeight, climbWeight');
+    }
+  } else if (c.eval?.type === 'mlp@1') {
+    const p = c.eval.params;
+    if (p?.inputSize !== FEATURE_COUNT) {
+      fail(`mlp@1 inputSize must be ${FEATURE_COUNT} (feature encoding v1)`);
+    }
+    if (
+      !Number.isInteger(p.hiddenSize) ||
+      p.hiddenSize < 1 ||
+      !numberArray(p.w1, p.hiddenSize * p.inputSize) ||
+      !numberArray(p.b1, p.hiddenSize) ||
+      !numberArray(p.w2, p.hiddenSize) ||
+      typeof p.b2 !== 'number'
+    ) {
+      fail('mlp@1 params have inconsistent shapes');
+    }
+  } else {
+    fail(`unknown eval type ${JSON.stringify((c.eval as { type?: unknown } | null)?.type)}`);
   }
   const s = c.search;
   if (
@@ -103,6 +135,21 @@ export function validateCheckpoint(data: unknown): Checkpoint {
   return c;
 }
 
+/** Build the EvalFn a checkpoint's eval spec describes. */
+export function checkpointEvalFn(ev: CheckpointEval): EvalFn {
+  if (ev.type === 'static@1') {
+    const weights = ev.weights;
+    return (state, me) => evaluate(state, me, weights);
+  }
+  const net = new Mlp(ev.params);
+  const buf = new Float32Array(FEATURE_COUNT);
+  return (state, me) => {
+    // The net scores the player to move; negate for the other perspective.
+    const logit = net.forward(encodeFeatures(state, buf));
+    return (state.player === me ? logit : -logit) * EVAL_SCALE;
+  };
+}
+
 export interface CheckpointPlayerOptions {
   seed?: number;
   /** Override the checkpoint's search iterations (strength ladder knob). */
@@ -112,12 +159,11 @@ export interface CheckpointPlayerOptions {
 
 /** Build the playing agent a checkpoint describes: MCTS over its eval. */
 export function playerFromCheckpoint(ckpt: Checkpoint, opts: CheckpointPlayerOptions = {}): AiPlayer {
-  const weights = ckpt.eval.weights;
   return new MctsPlayer({
     ...ckpt.search,
     iterations: opts.iterations ?? ckpt.search.iterations,
     seed: opts.seed,
-    evaluate: (state, me) => evaluate(state, me, weights),
+    evaluate: checkpointEvalFn(ckpt.eval),
     name: opts.name ?? `gen-${ckpt.generation}`,
   });
 }

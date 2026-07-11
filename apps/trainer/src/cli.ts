@@ -11,7 +11,15 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { parseArgs } from 'node:util';
-import { createCheckpoint, type Checkpoint, type EloRating } from '@santorini/ai';
+import {
+  FEATURE_COUNT,
+  Mlp,
+  checkpointEvalFn,
+  createCheckpoint,
+  selfPlay,
+  type Checkpoint,
+  type EloRating,
+} from '@santorini/ai';
 import { fitElo, performanceRating, type GauntletLine, type PairResult } from './elo.ts';
 import { BASELINES_FORMAT, readBaselines, readCheckpoint, writeJson, type Baselines } from './io.ts';
 import { makePlayer, parsePlayerSpec, specName, type PlayerSpec } from './players.ts';
@@ -24,6 +32,10 @@ const USAGE = `usage:
                     [--out models/baselines.json]
   trainer gauntlet  <player> [--games 20] [--seed 1] [--baselines models/baselines.json]
                     [--update]
+  trainer train     [--parent models/gen-000.json] [--out models/gen-NNN.json] [--games 200]
+                    [--seed 1] [--iters PARENT] [--temp-turns 8] [--max-half-turns 400]
+                    [--hidden 64] [--epochs 10] [--lr 0.2] [--batch 64] [--sgn FILE]
+                    [--notes TEXT] [--force]
 
 player specs: random | greedy | mcts:ITERS[,c=F][,depth=N] | ckpt:PATH[,iters=N]
 (the --players pool is space-separated because specs may contain commas)`;
@@ -41,6 +53,12 @@ function loadCheckpoint(path: string): Checkpoint {
 function int(name: string, value: string): number {
   const x = Number(value);
   if (!Number.isInteger(x)) throw new Error(`--${name} must be an integer (got ${value})`);
+  return x;
+}
+
+function float(name: string, value: string): number {
+  const x = Number(value);
+  if (!Number.isFinite(x)) throw new Error(`--${name} must be a number (got ${value})`);
   return x;
 }
 
@@ -260,6 +278,99 @@ function cmdGauntlet(args: string[]): void {
   }
 }
 
+function cmdTrain(args: string[]): void {
+  const { values } = parseArgs({
+    args,
+    options: {
+      parent: { type: 'string', default: 'models/gen-000.json' },
+      out: { type: 'string' },
+      games: { type: 'string', default: '200' },
+      seed: { type: 'string', default: '1' },
+      iters: { type: 'string' },
+      'temp-turns': { type: 'string', default: '8' },
+      'max-half-turns': { type: 'string', default: '400' },
+      hidden: { type: 'string', default: '64' },
+      // Mild fitting wins: heavily-trained nets go overconfident, saturating
+      // the playout values MCTS averages, and play *worse* (session-4 sweep).
+      epochs: { type: 'string', default: '10' },
+      lr: { type: 'string', default: '0.2' },
+      batch: { type: 'string', default: '64' },
+      sgn: { type: 'string' },
+      notes: { type: 'string' },
+      force: { type: 'boolean', default: false },
+    },
+  });
+  const parent = readCheckpoint(values.parent);
+  const generation = parent.generation + 1;
+  const out = values.out ?? `models/gen-${String(generation).padStart(3, '0')}.json`;
+  if (existsSync(out) && !values.force) throw new Error(`${out} exists (use --force to overwrite)`);
+  const games = int('games', values.games);
+  const seed = int('seed', values.seed);
+  const iterations = values.iters !== undefined ? int('iters', values.iters) : parent.search.iterations;
+  const epochs = int('epochs', values.epochs);
+
+  console.log(
+    `self-play: ${games} games, mcts ${iterations} iters, ` +
+      `eval ${parent.eval.type} (gen ${parent.generation})`,
+  );
+  const started = Date.now();
+  let decided = 0;
+  const result = selfPlay(
+    {
+      games,
+      seed,
+      search: { ...parent.search, iterations },
+      evaluate: checkpointEvalFn(parent.eval),
+      temperatureTurns: int('temp-turns', values['temp-turns']),
+      maxHalfTurns: int('max-half-turns', values['max-half-turns']),
+    },
+    (game, i) => {
+      if (game.winner !== null) decided++;
+      console.log(
+        `game ${String(i + 1).padStart(String(games).length)}/${games}  ` +
+          `${game.winner === null ? 'draw' : `P${game.winner + 1} wins`} in ${game.sgn.length} half-turns`,
+      );
+    },
+  );
+  console.log(
+    `${decided}/${games} decided, ${result.samples.length} samples ` +
+      `in ${((Date.now() - started) / 1000).toFixed(1)}s`,
+  );
+
+  if (values.sgn !== undefined) {
+    const name = `gen-${parent.generation}-selfplay`;
+    const event = `trainer train seed=${seed}`;
+    const docs = result.games.map((g) => gameToSgn({ ...g, aSeat: 0 }, name, name, event));
+    mkdirSync(dirname(values.sgn), { recursive: true });
+    writeFileSync(values.sgn, docs.join('\n'));
+    console.log(`wrote ${result.games.length} games to ${values.sgn}`);
+  }
+
+  // Continue training a net parent; start fresh only from a static parent.
+  const net =
+    parent.eval.type === 'mlp@1'
+      ? new Mlp(parent.eval.params)
+      : Mlp.init(FEATURE_COUNT, int('hidden', values.hidden), seed + 999);
+  const losses = net.train(result.samples, {
+    epochs,
+    batchSize: int('batch', values.batch),
+    lr: float('lr', values.lr),
+    seed: seed + 1,
+  });
+  losses.forEach((loss, e) => console.log(`epoch ${e + 1}/${epochs}  loss ${loss.toFixed(4)}`));
+
+  const ckpt = createCheckpoint(new Date().toISOString(), {
+    generation,
+    parent: values.parent,
+    eval: { type: 'mlp@1', params: net.toParams() },
+    search: parent.search,
+    notes: values.notes ?? `self-play ${games} games @ mcts(${iterations}) from ${values.parent}`,
+  });
+  writeJson(out, ckpt);
+  console.log(`wrote ${out} (gen ${generation}, mlp ${net.hiddenSize} hidden)`);
+  console.log(`rate it: node apps/trainer/src/cli.ts gauntlet ckpt:${out} --update`);
+}
+
 function main(): void {
   const [cmd, ...args] = process.argv.slice(2);
   try {
@@ -272,6 +383,8 @@ function main(): void {
         return cmdCalibrate(args);
       case 'gauntlet':
         return cmdGauntlet(args);
+      case 'train':
+        return cmdTrain(args);
       default:
         console.error(USAGE);
         process.exitCode = 1;

@@ -20,6 +20,13 @@ export const DEFAULT_EVAL_WEIGHTS: EvalWeights = {
 export type EvalFn = (state: GameState, me: Player) => number;
 
 /**
+ * MCTS maps eval scores onto (0,1) via sigmoid(score / EVAL_SCALE). Evals
+ * that natively produce a win-probability logit (the MLP) multiply it by
+ * this constant so the mapping recovers their probability exactly.
+ */
+export const EVAL_SCALE = 150;
+
+/**
  * Static evaluation of a position from `me`'s perspective; higher is better.
  * Terms: worker heights, centrality, and reachable climbs (adjacent squares
  * exactly one level up). Intentionally cheap — this is the greedy baseline

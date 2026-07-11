@@ -1,6 +1,6 @@
 import type { GameState, Player, Turn } from '@santorini/engine';
 import { applyTurnInPlace, cloneState, legalTurns } from '@santorini/engine';
-import { evaluate, type EvalFn } from './eval.ts';
+import { EVAL_SCALE, evaluate, type EvalFn } from './eval.ts';
 import { resolveTurn, type AiPlayer } from './player.ts';
 import { mulberry32, pick, type Rng } from './rng.ts';
 
@@ -21,9 +21,6 @@ export interface MctsOptions {
   /** Display name (default `mcts(<iterations>)`). */
   name?: string;
 }
-
-/** Maps evaluate()'s scale onto (0,1) via a sigmoid. */
-const EVAL_SCALE = 150;
 
 export interface TurnStat {
   turn: Turn;
