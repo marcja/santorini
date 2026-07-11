@@ -1,6 +1,6 @@
 # Progress
 
-_Last updated: 2026-07-11 (session 5)_
+_Last updated: 2026-07-11 (session 6)_
 
 ## Done
 
@@ -84,6 +84,22 @@ _Last updated: 2026-07-11 (session 5)_
   Head-to-head vs parent even at 12–12/24 though — per-generation gains are
   modest; expect to need the next levers (PUCT priors, more games) soon.
 
+- **Bounded AI goal complete (this session): gen-004 + gen-005 trained,
+  ladder frozen, training stopped.** Same recipe (500 games @ mcts(600),
+  seed = gen number, `--augment`; losses ~0.60). Neither cleared the early
+  stop (gen-004 10–10, gen-005 8–12 vs mcts(1000)). Gauntlets *sagged*
+  (903 → 878 → 841) while head-to-heads *rose* — gen-004 beat gen-003 15–9
+  (+89), gen-005 beat gen-004 13–11, and the tiebreaker gen-005 vs gen-003
+  went **17–7 (70.8%, +154 Elo)**: the lineage is genuinely improving and
+  the gauntlet ordering at the top is noise (rungs are 100+ Elo apart or
+  20-game samples). **`models/ladder.json` (`santorini-ladder@1`) freezes
+  the difficulty ladder**: Beginner=random(0), Easy=mcts:200(657),
+  Medium=greedy(808), Hard=ckpt:gen-005(841 gauntlet, strongest by
+  head-to-head). Self-play SGN dumps for both gens are in the session
+  scratchpad only (replayable; regenerate deterministically from seeds 4/5
+  if needed). PUCT priors / more games per gen are deferred to the
+  post-web return as planned.
+
 ## Next
 
 **Sequencing decision (2026-07-11):** cap AI training at a bounded
@@ -94,18 +110,10 @@ Rationale: nothing in web slices 2–4 depends on further AI strength — the
 difficulty ladder wants *varied* strength and we already have calibrated
 rungs (random 0 / mcts(200) 657 / greedy 808 / gen-003 903).
 
-1. Chore: TypeScript 5.8 → 6 → 7 upgrade (GitHub issue #1). TS 6.0 GA'd
-   2026-03, TS 7.0 (Go-native compiler) GA'd 2026-07-08. Our tsconfig uses
-   none of the 6.0 deprecations (no baseUrl, ES2022 target, bundler
-   resolution), so expect a clean two-step bump; park at 6 if 7 misbehaves
-   (GA is days old). Note: TS7 speeds *typecheck/editor only* — training
-   runtime is unaffected. First PR under the new branch/PR workflow.
-2. Bounded AI goal: gen-004 and gen-005 with the existing augmented recipe
-   (`train --parent ... --augment`) — pure compute, no new AI code. Stop
-   early if a checkpoint clears mcts(1000) at ≥65% over ≥20 games. Then
-   freeze 3–4 ladder checkpoints as difficulty levels and stop training.
-   PUCT priors / more games/gen / regularization are explicitly deferred
-   to the post-web return.
+1. ~~TypeScript 7 upgrade~~ — done (PRs #1/#2, merged).
+2. ~~Bounded AI goal~~ — done (gen-004/005 trained, `models/ladder.json`
+   frozen; see Done above). PUCT priors / more games/gen / regularization
+   remain deferred to the post-web return.
 3. Web slice 2: god-power selection UI (engine supports it; UI is base-only),
    generic multi-step turn input (Artemis paths, Demeter double builds,
    Prometheus pre-build) — UI currently assumes path len 2 / 1 build.
