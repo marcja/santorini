@@ -1,0 +1,133 @@
+:root {
+  --sea: #1e3a5f;
+  --sea-light: #2b4d7a;
+  --sand: #e8e2d6;
+  --ink: #f4f1ea;
+  --p1: #3b82f6;
+  --p1-dark: #1d4ed8;
+  --p2: #f59e0b;
+  --p2-dark: #b45309;
+  --accent: #22c55e;
+  --build: #f97316;
+  font-family: 'Avenir Next', 'Segoe UI', system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+}
+
+body {
+  background: var(--sea);
+  color: var(--ink);
+  min-height: 100vh;
+}
+
+main {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 24px 16px;
+}
+
+header {
+  display: flex;
+  align-items: baseline;
+  gap: 24px;
+  margin-bottom: 16px;
+}
+
+h1 {
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.status {
+  font-size: 17px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.status .chip {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.chip.p1 { background: var(--p1); }
+.chip.p2 { background: var(--p2); }
+
+.layout {
+  display: flex;
+  gap: 24px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+svg#board {
+  width: min(540px, 100%);
+  height: auto;
+  background: var(--sea-light);
+  border-radius: 16px;
+  touch-action: manipulation;
+}
+
+.cell { cursor: pointer; }
+.cell .tile { transition: filter 0.1s; }
+.cell:hover .tile { filter: brightness(1.06); }
+
+aside {
+  flex: 1;
+  min-width: 240px;
+}
+
+.controls {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+button {
+  background: var(--ink);
+  color: var(--sea);
+  border: none;
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+button:hover { filter: brightness(0.92); }
+
+aside h2 {
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  opacity: 0.7;
+  margin-bottom: 8px;
+}
+
+pre#record {
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 14px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: 8px;
+  padding: 12px;
+  min-height: 120px;
+}
+
+.banner {
+  margin-top: 12px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: var(--accent);
+  color: #052e16;
+  font-weight: 700;
+  display: inline-block;
+}
