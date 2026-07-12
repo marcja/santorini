@@ -50,8 +50,9 @@ Separate offline app; the AI teaches itself via adversarial self-play.
       `--pv`/`--wd`. gen-006 (UCT self-play data) gauntleted 1001;
       gen-007 (first PUCT self-play, 800 games) gauntleted 1132 and beat
       gen-005 23–1 — two consecutive +232-Elo head-to-head jumps. Loop
-      still rising; further gens are one command each. GPU/WebGPU/ONNX
-      still unneeded (pure TS trains a gen in ~15 min).
+      still rising; further gens are one command each — recipe, decision
+      rules, app-shipping steps, and plateau levers in `docs/TRAINING.md`.
+      GPU/WebGPU/ONNX still unneeded (pure TS trains a gen in ~15 min).
 - [x] Checkpoint format + rating harness: versioned JSON artifacts
       (`santorini-checkpoint@1`: generation, parent, eval weights, search
       config, Elo record) in `models/`; trainer CLI (`init`/`match`/

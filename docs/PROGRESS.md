@@ -304,14 +304,13 @@ rungs (random 0 / mcts(200) 657 / greedy 808 / gen-003 903).
 6. ~~Return to AI: PUCT priors (policy head over full-turn actions), more
    games/generation, regularization~~ — done (see Done above; all three
    levers landed and validated: gen-006/007, gauntlet 1001/1132).
-7. Keep the training loop turning (optional, cheap): more pv generations
-   (`trainer train --parent models/gen-00N.json --games 800 --augment
-   --wd 1e-4`, ~15 min/gen + eval), stop when a gen fails to beat its
+7. Keep the training loop turning (optional, cheap): **the full recipe,
+   decision rules, app-shipping steps, and plateau levers are documented in
+   `docs/TRAINING.md`** — one `trainer train` command per generation
+   (~15 min + eval), stop after two consecutive failures to beat the
    parent. Watch in-browser Expert latency (PUCT pays a policy forward per
    expansion, roughly 2× per move — fine today); a web worker becomes
-   worthwhile if budgets rise ~10×. Deeper levers if the curve flattens:
-   sharper policy targets (visit temperature), Dirichlet root noise,
-   bigger hidden layer / two hidden layers.
+   worthwhile if budgets rise ~10×.
 
 ## Decisions / notes
 

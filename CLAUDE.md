@@ -13,6 +13,9 @@ TypeScript monorepo (npm workspaces): `packages/engine` (headless rules),
   commit whenever PROGRESS.md changes.** A PostToolUse hook in
   `.claude/settings.json` reminds you on every PROGRESS.md edit.
 - `docs/NOTATION.md` — SGN game notation spec (engine implements this).
+- `docs/TRAINING.md` — how to train the next AI generation, evaluate it,
+  ship it to the web app, and what to try if training plateaus. Read it
+  before touching `apps/trainer` or `models/`.
 
 ## Ground truth for rules
 
