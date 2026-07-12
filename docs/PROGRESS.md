@@ -1,6 +1,6 @@
 # Progress
 
-_Last updated: 2026-07-11 (session 9)_
+_Last updated: 2026-07-11 (session 10)_
 
 ## Done
 
@@ -188,6 +188,28 @@ _Last updated: 2026-07-11 (session 9)_
   in-browser on the main thread — no web worker needed at current budgets;
   revisit when search budgets grow (slice-4 coach / stronger rungs).
 
+- **Web slice 4a (this session): coach v1 — threats, hints, move feedback.**
+  `packages/ai/src/coach.ts` (the explainability channel made concrete):
+  `winningTurns`/`threatSquares` (exact one-ply facts; threats = hand the
+  unchanged position to the opponent, so Athena state carries over),
+  `reviewTurn` (missed win / hang + avoidable-via-alternatives / block
+  credit / created threat — no search), `coachHint` (seeded MCTS search →
+  narrated suggestion, win probability, PV, candidates; placement hints
+  use the centrality heuristic directly since ~600 placement pairs starve
+  1000 iterations into visit noise), `reviewLines`/`describeTurn` narration.
+  13 new tests (105 total green across the workspace). `apps/web`: Coach sidebar section
+  (off by default) — win/threat squares ringed on the board with alert
+  lines each turn; Hint button (mcts 1000 + bundled gen-005 eval, ~300 ms)
+  shows narrated advice and rings the suggested squares; human plays are
+  reviewed via `playHuman()` into a feedback box (AI moves never are);
+  hints invalidate when the displayed position changes. Verified in the
+  in-app browser via an engine-generated fixture (threat alert + dome-block
+  hint b1-b2^c3, avoidable-hang and missed-win feedback, win banner,
+  central placement hint); no console errors.
+  **Remaining slice-4 scope:** beginner/intermediate/advanced lesson
+  content (structured curriculum), richer plan narration beyond one-ply
+  facts + PV.
+
 ## Next
 
 **Sequencing decision (2026-07-11):** cap AI training at a bounded
@@ -208,9 +230,9 @@ rungs (random 0 / mcts(200) 657 / greedy 808 / gen-003 903).
    slice 2 is complete.
 4. ~~Web slice 3: vs-AI play; AI-vs-AI at controllable rate~~ — done (see
    Done above).
-5. Web slice 4: coach layer — turn `search()`'s visits/values/PV into
-   human explanations (threats, plans, countermoves); beginner/
-   intermediate/advanced lesson content.
+5. Web slice 4: coach layer. ~~4a: threats/hints/move feedback~~ — done
+   (see Done above). 4b: beginner/intermediate/advanced lesson content;
+   richer plan narration.
 6. Return to AI: PUCT priors (policy head over full-turn actions), more
    games/generation, regularization — sized against slice-3 realities
    (Hard ≈200–300 ms/move in-browser; main thread is fine today, a worker

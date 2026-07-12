@@ -20,6 +20,17 @@ export {
 } from './checkpoint.ts';
 export { parsePlayerSpec, playerFromSpec, specName, type PlayerSpec } from './spec.ts';
 export {
+  coachHint,
+  describeTurn,
+  reviewLines,
+  reviewTurn,
+  threatSquares,
+  winningTurns,
+  type CoachHint,
+  type CoachOptions,
+  type TurnReview,
+} from './coach.ts';
+export {
   selfPlay,
   type SelfPlayConfig,
   type SelfPlayGame,

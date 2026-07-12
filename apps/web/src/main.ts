@@ -12,9 +12,18 @@ import {
   type GodId,
   type MoveTurn,
   type Square,
+  type Turn,
 } from '@santorini/engine';
-import type { AiPlayer } from '@santorini/ai';
-import { AI_LEVELS } from './ai.ts';
+import {
+  coachHint,
+  reviewLines,
+  reviewTurn,
+  threatSquares,
+  winningTurns,
+  type AiPlayer,
+  type CoachHint,
+} from '@santorini/ai';
+import { AI_LEVELS, COACH_EVAL } from './ai.ts';
 import './style.css';
 
 // Pass-and-play with god powers. Engine player 0 always moves first; which
@@ -115,6 +124,11 @@ app.innerHTML = `
           </div>
         </div>
         <div id="choice"></div>
+        <h2>Coach</h2>
+        <div class="coach">
+          <label><input type="checkbox" id="coach-on"> Show threats and advice</label>
+          <div id="coach-body" hidden></div>
+        </div>
         <div id="gods"></div>
         <h2>Record</h2>
         <div class="replay">
@@ -155,9 +169,44 @@ const replayPosEl = document.querySelector<HTMLSpanElement>('#replay-pos')!;
 const sgnEl = document.querySelector<HTMLTextAreaElement>('#sgn')!;
 const sgnMsgEl = document.querySelector<HTMLDivElement>('#sgn-msg')!;
 const ctlEls = [0, 1].map((c) => document.querySelector<HTMLSelectElement>(`#ctl-${c}`)!);
+const coachOnEl = document.querySelector<HTMLInputElement>('#coach-on')!;
+const coachBodyEl = document.querySelector<HTMLDivElement>('#coach-body')!;
 const aiPauseEl = document.querySelector<HTMLButtonElement>('#ai-pause')!;
 const aiDelayEl = document.querySelector<HTMLInputElement>('#ai-delay')!;
 const aiDelayValEl = document.querySelector<HTMLSpanElement>('#ai-delay-val')!;
+
+// --- coach ---
+
+// The coach analyzes the DISPLAYED position (live or replay). Cheap one-ply
+// facts (win-in-1s, threat squares) render on every turn while enabled; the
+// search-backed hint runs only on demand and is invalidated the moment the
+// displayed position changes. Feedback reviews the human's just-played turn.
+let coachOn = false;
+let hint: CoachHint | null = null;
+let hintKey = ''; // position fingerprint the hint was computed for
+let feedback: string[] = [];
+
+const coachKey = (): string =>
+  `${game.state.gods.join()}|${viewPos()}|${game.turnStrings.join(' ')}`;
+
+/** Play a turn for a human seat, capturing coach feedback first. */
+function playHuman(t: Turn): void {
+  feedback = coachOn ? reviewLines(reviewTurn(game.state, t)) : [];
+  game.play(t);
+}
+
+coachOnEl.addEventListener('change', () => {
+  coachOn = coachOnEl.checked;
+  render();
+});
+coachBodyEl.addEventListener('click', (e) => {
+  if (!(e.target as Element).closest('#coach-hint')) return;
+  const s = viewState();
+  if (s.phase === 'over') return;
+  hint = coachHint(s, { iterations: 1000, seed: viewPos() + 1, evaluate: COACH_EVAL });
+  hintKey = coachKey();
+  render();
+});
 
 // --- AI seats ---
 
@@ -230,13 +279,14 @@ undoEl.addEventListener('click', () => {
     controllers.includes('human') &&
     controllerToMove() !== 'human'
   );
+  feedback = []; // the reviewed move is gone
   resetSelection();
   render();
 });
 finishEl.addEventListener('click', () => {
   const { finish } = uiOptions();
   if (finish) {
-    game.play(finish);
+    playHuman(finish);
     resetSelection();
     render();
   }
@@ -267,6 +317,7 @@ function startGame(godOf: [GodId, GodId], startColor: number): void {
   view = null;
   aiPlayers = [null, null]; // fresh AI seeds per game
   aiPaused = false;
+  feedback = [];
   sgnMsgEl.textContent = '';
   resetSelection();
   renderSetup();
@@ -419,6 +470,7 @@ document.querySelector('#sgn-load')!.addEventListener('click', () => {
     const loaded = Game.fromSGN(sgnEl.value);
     game = loaded;
     seatColor = [0, 1]; // SGN has no color info: first mover shows as Blue
+    feedback = [];
     draft = null;
     renderSetup();
     resetSelection();
@@ -522,7 +574,7 @@ function applyStep(s: Step): void {
   const { steps, finish } = uiOptions();
   // Nothing further is possible: the turn is fully determined — play it.
   if (finish && steps.length === 0) {
-    game.play(finish);
+    playHuman(finish);
     resetSelection();
   }
 }
@@ -541,7 +593,7 @@ function onCellClick(sq: Square): void {
     } else if (!occupied && pendingPlace === null) {
       pendingPlace = sq;
     } else if (!occupied && pendingPlace !== null) {
-      game.play({ kind: 'place', squares: [pendingPlace, sq] });
+      playHuman({ kind: 'place', squares: [pendingPlace, sq] });
       pendingPlace = null;
     }
     render();
@@ -595,6 +647,24 @@ function render(): void {
   const { steps, finish } = uiOptions();
   const partialBuilds = [...pre, ...blds];
 
+  // Coach: drop a hint the moment the displayed position changes; one-ply
+  // facts (win/threat squares) are cheap enough to recompute every render.
+  if (hint && hintKey !== coachKey()) hint = null;
+  const coachThreats = new Set(coachOn && s.phase === 'play' ? threatSquares(s) : []);
+  const coachWins = new Set(
+    coachOn && s.phase === 'play' ? winningTurns(s).map((t) => t.path[t.path.length - 1]) : [],
+  );
+  const hintSquares = new Set<Square>();
+  if (hint) {
+    if (hint.turn.kind === 'place') {
+      for (const q of hint.turn.squares) hintSquares.add(q);
+    } else {
+      hintSquares.add(hint.turn.path[0]);
+      hintSquares.add(hint.turn.path[hint.turn.path.length - 1]);
+      for (const b of [...(hint.turn.preBuilds ?? []), ...hint.turn.builds]) hintSquares.add(b.at);
+    }
+  }
+
   // Heights as they'll look after this turn's builds so far.
   const disp = s.heights.slice();
   for (const b of partialBuilds) disp[b.at] = b.dome ? 4 : disp[b.at] + 1;
@@ -628,6 +698,15 @@ function render(): void {
     if (steps.some((st) => st.kind !== 'move' && st.sq === sq)) {
       svg += `<circle cx="${cx(sq)}" cy="${cy(sq)}" r="13" fill="none" stroke="var(--build)" stroke-width="4" stroke-dasharray="5 4" pointer-events="none"/>`;
     }
+    if (coachThreats.has(sq)) {
+      svg += `<circle cx="${cx(sq)}" cy="${cy(sq)}" r="35" fill="none" stroke="var(--danger)" stroke-width="3.5" stroke-dasharray="8 5" pointer-events="none"/>`;
+    }
+    if (coachWins.has(sq)) {
+      svg += `<circle cx="${cx(sq)}" cy="${cy(sq)}" r="39" fill="none" stroke="var(--accent)" stroke-width="3.5" pointer-events="none"/>`;
+    }
+    if (hintSquares.has(sq)) {
+      svg += `<circle cx="${cx(sq)}" cy="${cy(sq)}" r="43" fill="none" stroke="var(--coach)" stroke-width="3" stroke-dasharray="3 4" pointer-events="none"/>`;
+    }
     svg += '</g>';
   }
   boardEl.innerHTML = svg;
@@ -639,6 +718,8 @@ function render(): void {
   revFwdEl.disabled = revEndEl.disabled = view === null;
   replayPosEl.textContent = `${viewPos()}/${game.turns.length}`;
   choiceEl.innerHTML = choiceHtml();
+  coachBodyEl.hidden = !coachOn;
+  coachBodyEl.innerHTML = coachOn ? coachHtml(s, coachWins, coachThreats) : '';
   godsEl.innerHTML = godsHtml();
   aiPauseEl.disabled = !anyAiSeat();
   aiPauseEl.textContent = aiPaused ? 'Resume AI' : 'Pause AI';
@@ -660,6 +741,38 @@ function choiceHtml(): string {
     .map((st, i) => `<button data-i="${i}">${stepLabel(st)}</button>`)
     .join('');
   return `<div class="choice-title">${squareName(choice.sq)}:</div>${buttons}`;
+}
+
+function coachHtml(s: GameState, wins: Set<Square>, threats: Set<Square>): string {
+  const names = (set: Set<Square>): string =>
+    [...set].sort((a, b) => a - b).map(squareName).join(', ');
+  const parts: string[] = [];
+  if (feedback.length > 0) {
+    parts.push(`<div class="coach-feedback">${feedback.map((l) => `<p>${l}</p>`).join('')}</div>`);
+  }
+  if (s.phase === 'play') {
+    if (wins.size > 0) {
+      parts.push(
+        `<p class="coach-alert coach-win">${playerLabel(s.player)} can win at ${names(wins)}.</p>`,
+      );
+    }
+    if (threats.size > 0) {
+      parts.push(
+        `<p class="coach-alert coach-danger">${playerLabel(1 - s.player)} threatens to win at ${names(threats)}.</p>`,
+      );
+    }
+  }
+  if (s.phase !== 'over') parts.push('<button id="coach-hint">Hint</button>');
+  if (hint) {
+    parts.push(`<div class="coach-lines">${hint.lines.map((l) => `<p>${l}</p>`).join('')}</div>`);
+    if (hint.candidates.length > 1) {
+      const alts = hint.candidates
+        .map((c) => `${c.notation} (${Math.round(c.value * 100)}%, ${c.visits}v)`)
+        .join(' · ');
+      parts.push(`<p class="coach-cands">Candidates: ${alts}</p>`);
+    }
+  }
+  return parts.join('');
 }
 
 function godsHtml(): string {

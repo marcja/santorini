@@ -9,6 +9,8 @@
   --p2-dark: #b45309;
   --accent: #22c55e;
   --build: #f97316;
+  --danger: #ef4444;
+  --coach: #c084fc;
   font-family: 'Avenir Next', 'Segoe UI', system-ui, sans-serif;
 }
 
@@ -262,6 +264,52 @@ button.god-card strong {
   text-align: left;
   background: var(--accent);
   color: #052e16;
+}
+
+.coach {
+  font-size: 13px;
+  line-height: 1.5;
+  margin-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.coach label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.coach-feedback {
+  border-left: 3px solid var(--coach);
+  padding: 4px 8px;
+  background: rgba(192, 132, 252, 0.12);
+  border-radius: 0 6px 6px 0;
+}
+
+.coach-alert {
+  font-weight: 600;
+}
+
+.coach-win { color: var(--accent); }
+.coach-danger { color: var(--danger); }
+
+#coach-hint {
+  align-self: flex-start;
+  background: var(--coach);
+  color: #3b0764;
+  padding: 6px 14px;
+}
+
+.coach-lines p,
+.coach-feedback p {
+  margin-bottom: 4px;
+}
+
+.coach-cands {
+  opacity: 0.7;
+  word-break: break-word;
 }
 
 #gods {

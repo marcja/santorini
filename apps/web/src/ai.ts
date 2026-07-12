@@ -1,10 +1,12 @@
 import {
+  checkpointEvalFn,
   parsePlayerSpec,
   playerFromSpec,
   specName,
   validateCheckpoint,
   type AiPlayer,
   type Checkpoint,
+  type EvalFn,
 } from '@santorini/ai';
 import gen005 from '../../../models/gen-005.json';
 import ladderJson from '../../../models/ladder.json';
@@ -32,6 +34,9 @@ export interface AiLevel {
   /** Fresh player per game — players carry RNG state. */
   make(seed: number): AiPlayer;
 }
+
+/** Strongest bundled evaluation — powers the coach's hint search. */
+export const COACH_EVAL: EvalFn = checkpointEvalFn(validateCheckpoint(gen005).eval);
 
 export const AI_LEVELS: AiLevel[] = ladderJson.levels.map((level) => {
   const spec = parsePlayerSpec(level.spec);
