@@ -6,10 +6,9 @@
 > is a living document. Download the latest version from
 > roxley.com/santorini-rulebook."
 >
-> This file is a reformatted Markdown version of the rulebook, produced from
-> a raw-text PDF extraction (`rulebook.txt`, since removed as redundant once
-> this file was verified against it). Wording is preserved exactly; only
-> spacing artifacts, broken line breaks, and the page's callout/diagram
+> This file was created by extracting raw text from the PDF above, then
+> cleaning it up into structured Markdown. Wording is preserved exactly;
+> only spacing artifacts, broken line breaks, and the page's callout/diagram
 > ordering (scrambled by PDF text extraction) have been cleaned up and
 > reflowed into headings and lists. Diagram/photo callouts (e.g. board
 > component labels A–E) are noted in italics since no images are embedded in
