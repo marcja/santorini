@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@santorini/ai": "*",
     "@santorini/engine": "*"
   },
   "devDependencies": {

@@ -166,6 +166,28 @@ _Last updated: 2026-07-11 (session 9)_
   color reset, Cancel, base game. Mistake-log reminder held: coordinate
   clicks drifted (screenshot scale ≠ viewport), a11y-ref clicks didn't.
 
+- **Web slice 3 (this session): vs-AI play + AI-vs-AI at a controllable
+  rate.** Refactor first: player-spec parsing (`parsePlayerSpec` /
+  `playerFromSpec` / `specName`, grammar unchanged) moved from `apps/trainer`
+  into `@santorini/ai` (`src/spec.ts`; checkpoint loading stays injected —
+  fs in the trainer, bundled JSON in the browser), spec tests moved with it.
+  `apps/web`: a "Players" panel maps each color to Human or a
+  `models/ladder.json` rung (Hard = gen-005 checkpoint, bundled by Vite and
+  validated at module load); an AI driver re-arms a timeout after every
+  render and re-checks state before acting, so any user intervention
+  (undo, new game, SGN load, replay view, seat change) safely cancels it.
+  Delay slider 0–2 s = the AI-vs-AI rate control, plus Pause/Resume. Undo
+  vs an AI backs up to the human's previous decision point; in AI-vs-AI it
+  undoes one turn and auto-pauses. Board clicks are ignored while an AI is
+  to move; replay view halts the AI, stepping back to latest resumes it.
+  Verified in the in-app browser: human-vs-Hard base game (AI placed and
+  replied through the engine record), AI-aware undo, Medium-vs-Hard base
+  game and Apollo-vs-Pan god game both ran unattended to the win banner
+  (winning move `d2-c1#`), pause froze the run and resume continued it,
+  ditto replay stepping. Hard (mcts 1000 + net eval) ≈200–300 ms/move
+  in-browser on the main thread — no web worker needed at current budgets;
+  revisit when search budgets grow (slice-4 coach / stronger rungs).
+
 ## Next
 
 **Sequencing decision (2026-07-11):** cap AI training at a bounded
@@ -184,12 +206,15 @@ rungs (random 0 / mcts(200) 657 / greedy 808 / gen-003 903).
    done (see Done above). ~~Slice 2b: replay/analysis view~~ — done (see Done
    above). ~~God draft per rulebook (issue #7)~~ — done (see Done above);
    slice 2 is complete.
-4. Web slice 3: vs-AI play — engine+ai are pure TS, so `MctsPlayer` runs
-   in-browser as-is (load `models/gen-XXX.json` via `playerFromCheckpoint`);
-   AI-vs-AI at controllable rate; then coach layer.
-5. Return to AI: PUCT priors (policy head over full-turn actions), more
+4. ~~Web slice 3: vs-AI play; AI-vs-AI at controllable rate~~ — done (see
+   Done above).
+5. Web slice 4: coach layer — turn `search()`'s visits/values/PV into
+   human explanations (threats, plans, countermoves); beginner/
+   intermediate/advanced lesson content.
+6. Return to AI: PUCT priors (policy head over full-turn actions), more
    games/generation, regularization — sized against slice-3 realities
-   (per-move time budget, worker-thread search).
+   (Hard ≈200–300 ms/move in-browser; main thread is fine today, a worker
+   becomes worthwhile if budgets rise ~10×).
 
 ## Decisions / notes
 
