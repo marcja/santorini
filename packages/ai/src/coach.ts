@@ -1,5 +1,5 @@
 import type { GameState, MoveTurn, Player, Square, Turn } from '@santorini/engine';
-import { cloneState, formatTurn, legalTurns, squareName } from '@santorini/engine';
+import { cloneState, colOf, formatTurn, legalTurns, rowOf, squareName } from '@santorini/engine';
 import { MctsPlayer, type MctsOptions } from './mcts.ts';
 import { resolveTurn } from './player.ts';
 
@@ -139,6 +139,35 @@ export interface CoachOptions extends MctsOptions {
  * always do (no-move losses resolve when the previous turn is played).
  */
 export function coachHint(state: GameState, opts: CoachOptions = {}): CoachHint {
+  // Placement branching (~600 pairs) starves MCTS visit counts into noise;
+  // suggest by centrality directly — the honest version of the same advice.
+  if (state.phase === 'setup') {
+    const central = (sq: Square): number => 2 - Math.max(Math.abs(colOf(sq) - 2), Math.abs(rowOf(sq) - 2));
+    let turn = legalTurns(state)[0];
+    let best = -Infinity;
+    for (const t of legalTurns(state)) {
+      if (t.kind !== 'place') continue;
+      const score = central(t.squares[0]) + central(t.squares[1]);
+      if (score > best) {
+        best = score;
+        turn = t;
+      }
+    }
+    return {
+      turn,
+      notation: formatTurn(state, turn),
+      winProb: 0.5,
+      wins: [],
+      threats: [],
+      pv: [],
+      candidates: [],
+      lines: [
+        `Suggested: ${describeTurn(state, turn)}.`,
+        'Central squares reach more of the board — corners cramp your options.',
+      ],
+    };
+  }
+
   const result = new MctsPlayer(opts).search(state);
   const wins = uniqueSquares(winningTurns(state));
   const threats = threatSquares(state);
@@ -153,10 +182,7 @@ export function coachHint(state: GameState, opts: CoachOptions = {}): CoachHint 
   const notation = formatTurn(state, result.turn);
 
   const lines: string[] = [];
-  if (state.phase === 'setup') {
-    lines.push(`Suggested: ${describeTurn(state, result.turn)}.`);
-    lines.push('Central squares reach more of the board — corners cramp your options.');
-  } else if (wins.length > 0) {
+  if (wins.length > 0) {
     lines.push(
       `You can win right now — ${describeTurn(state, result.turn)} (${notation}).`,
     );

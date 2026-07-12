@@ -116,9 +116,15 @@ describe('coachHint', () => {
     expect(hint.candidates[0].notation).toBe(hint.notation);
   });
 
-  it('suggests a placement during setup', () => {
-    const hint = coachHint(createInitialState(), { iterations: 200, seed: 3 });
+  it('suggests a central placement during setup, without searching', () => {
+    const hint = coachHint(createInitialState());
     expect(hint.turn.kind).toBe('place');
     expect(hint.lines[0]).toContain('place workers');
+    // Both suggested squares are within one step of the center.
+    for (const q of (hint.turn as { squares: [number, number] }).squares) {
+      const name = squareName(q);
+      expect(['b', 'c', 'd']).toContain(name[0]);
+      expect(['2', '3', '4']).toContain(name[1]);
+    }
   });
 });
