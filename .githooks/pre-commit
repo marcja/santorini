@@ -1,0 +1,9 @@
+#!/bin/sh
+# Blocks a commit if Biome finds lint or formatting problems.
+# Installed via `scripts/install-hooks.sh` (git core.hooksPath, not copied
+# into .git/hooks — opt-in per clone; CI is the hard backstop either way).
+set -e
+
+echo "Running Biome lint/format checks..."
+npm run lint
+npm run format

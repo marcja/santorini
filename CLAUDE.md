@@ -36,9 +36,11 @@ already learned:
 - `npm test` — all workspace tests (vitest). `npm test -w @santorini/engine` for one package.
 - `npm run typecheck` — tsc over all packages.
 - `npm run lint` / `npm run format` — Biome, scoped to `packages/*/src` and
-  `apps/*/src`. **Report-only for now** (CI runs them with
-  `continue-on-error`; nothing blocks yet) — see `docs/PROGRESS.md` for the
-  warn-mode rollout plan tracked in issue #3.
+  `apps/*/src`. **Enforced**: CI fails on findings, and edits get
+  auto-formatted (not blocked) by a `.claude/settings.json` PostToolUse hook.
+  Run `sh scripts/install-hooks.sh` once per clone to also block local
+  commits (`git commit --no-verify` bypasses it in an emergency — CI still
+  catches it). Cognitive-complexity is still warn-only (issue #3, PR4/6).
 - Web dev server: use `.claude/launch.json` name `web` via the browser
   preview tools (never `npm run dev` in raw Bash — it blocks).
 
