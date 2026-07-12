@@ -17,13 +17,16 @@ import {
   augmentSamples,
   checkpointEvalFn,
   createCheckpoint,
+  parsePlayerSpec,
+  playerFromSpec,
   selfPlay,
+  specName,
   type Checkpoint,
   type EloRating,
+  type PlayerSpec,
 } from '@santorini/ai';
 import { fitElo, performanceRating, type GauntletLine, type PairResult } from './elo.ts';
 import { BASELINES_FORMAT, readBaselines, readCheckpoint, writeJson, type Baselines } from './io.ts';
-import { makePlayer, parsePlayerSpec, specName, type PlayerSpec } from './players.ts';
 import { gameToSgn, runMatch, type RunResult } from './run.ts';
 
 const USAGE = `usage:
@@ -93,8 +96,8 @@ function playPair(
   const config: { games: number; seed: number; maxHalfTurns?: number } = { games, seed };
   if (maxHalfTurns !== undefined) config.maxHalfTurns = maxHalfTurns;
   return runMatch(
-    (s) => makePlayer(specA, s, loadCheckpoint),
-    (s) => makePlayer(specB, s, loadCheckpoint),
+    (s) => playerFromSpec(specA, s, loadCheckpoint),
+    (s) => playerFromSpec(specB, s, loadCheckpoint),
     config,
     onGame,
   );
