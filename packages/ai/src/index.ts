@@ -1,15 +1,79 @@
-export { resolveTurn, type AiPlayer } from './player.ts';
-export { mulberry32, pick, type Rng } from './rng.ts';
-export { evaluate, DEFAULT_EVAL_WEIGHTS, EVAL_SCALE, type EvalFn, type EvalWeights } from './eval.ts';
-export { encodeFeatures, transformFeatures, augmentSamples, FEATURE_COUNT, SYMMETRY_MAPS } from './features.ts';
+export {
+  CHECKPOINT_FORMAT,
+  type Checkpoint,
+  type CheckpointEval,
+  type CheckpointInit,
+  type CheckpointPlayerOptions,
+  checkpointEvalFn,
+  checkpointPolicyFn,
+  createCheckpoint,
+  DEFAULT_SEARCH,
+  type EloRating,
+  type OpponentRecord,
+  playerFromCheckpoint,
+  type SearchConfig,
+  validateCheckpoint,
+} from './checkpoint.ts';
+export {
+  type CoachHint,
+  type CoachOptions,
+  coachHint,
+  describeTurn,
+  forcedLoss,
+  reviewLines,
+  reviewTurn,
+  type TurnReview,
+  threatSquares,
+  winningTurns,
+} from './coach.ts';
+export {
+  DEFAULT_EVAL_WEIGHTS,
+  EVAL_SCALE,
+  type EvalFn,
+  type EvalWeights,
+  evaluate,
+} from './eval.ts';
+export {
+  augmentSamples,
+  encodeFeatures,
+  FEATURE_COUNT,
+  SYMMETRY_MAPS,
+  transformFeatures,
+} from './features.ts';
+export { GreedyPlayer } from './greedy.ts';
+export {
+  checkExercise,
+  type Exercise,
+  type ExerciseGoal,
+  type ExerciseResult,
+  LESSONS,
+  type Lesson,
+  type LessonLevel,
+  type LessonPosition,
+  lessonState,
+} from './lessons.ts';
+export {
+  type GameConfig,
+  type GameResult,
+  type MatchResult,
+  playGame,
+  playMatch,
+} from './match.ts';
+export {
+  type MctsOptions,
+  MctsPlayer,
+  type SearchResult,
+  type TurnStat,
+} from './mcts.ts';
 export { Mlp, type MlpParams, type Sample, type TrainOptions } from './mlp.ts';
+export { type AiPlayer, resolveTurn } from './player.ts';
 export {
   ACTION_COUNT,
   augmentPvSamples,
+  type PolicyFn,
   policyPriors,
   transformAction,
   turnAction,
-  type PolicyFn,
 } from './policy.ts';
 export {
   PolicyValueNet,
@@ -18,53 +82,17 @@ export {
   type PvSample,
   type PvTrainOptions,
 } from './pvnet.ts';
+export { RandomPlayer } from './random.ts';
+export { mulberry32, pick, type Rng } from './rng.ts';
 export {
-  CHECKPOINT_FORMAT,
-  DEFAULT_SEARCH,
-  checkpointEvalFn,
-  checkpointPolicyFn,
-  createCheckpoint,
-  validateCheckpoint,
-  playerFromCheckpoint,
-  type Checkpoint,
-  type CheckpointEval,
-  type CheckpointInit,
-  type CheckpointPlayerOptions,
-  type EloRating,
-  type OpponentRecord,
-  type SearchConfig,
-} from './checkpoint.ts';
-export { parsePlayerSpec, playerFromSpec, specName, type PlayerSpec } from './spec.ts';
-export {
-  coachHint,
-  describeTurn,
-  forcedLoss,
-  reviewLines,
-  reviewTurn,
-  threatSquares,
-  winningTurns,
-  type CoachHint,
-  type CoachOptions,
-  type TurnReview,
-} from './coach.ts';
-export {
-  LESSONS,
-  checkExercise,
-  lessonState,
-  type Exercise,
-  type ExerciseGoal,
-  type ExerciseResult,
-  type Lesson,
-  type LessonLevel,
-  type LessonPosition,
-} from './lessons.ts';
-export {
-  selfPlay,
   type SelfPlayConfig,
   type SelfPlayGame,
   type SelfPlayResult,
+  selfPlay,
 } from './selfplay.ts';
-export { RandomPlayer } from './random.ts';
-export { GreedyPlayer } from './greedy.ts';
-export { MctsPlayer, type MctsOptions, type SearchResult, type TurnStat } from './mcts.ts';
-export { playGame, playMatch, type GameConfig, type GameResult, type MatchResult } from './match.ts';
+export {
+  type PlayerSpec,
+  parsePlayerSpec,
+  playerFromSpec,
+  specName,
+} from './spec.ts';

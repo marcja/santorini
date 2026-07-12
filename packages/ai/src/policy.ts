@@ -31,7 +31,8 @@ export function turnAction(turn: Turn): number | null {
     const at = turn.builds[0].at;
     const dc = colOf(at) - colOf(to);
     const dr = rowOf(at) - rowOf(to);
-    if (Math.abs(dc) > 1 || Math.abs(dr) > 1 || (dc === 0 && dr === 0)) return null;
+    if (Math.abs(dc) > 1 || Math.abs(dr) > 1 || (dc === 0 && dr === 0))
+      return null;
     code = (dr + 1) * 3 + (dc + 1);
   }
   return to * 9 + code;
@@ -48,9 +49,11 @@ export function transformAction(action: number, s: number): number {
   const code = action % 9;
   const to2 = map[to];
   if (code === NO_BUILD) return to2 * 9 + NO_BUILD;
-  const buildSq = (rowOf(to) + Math.floor(code / 3) - 1) * 5 + (colOf(to) + (code % 3) - 1);
+  const buildSq =
+    (rowOf(to) + Math.floor(code / 3) - 1) * 5 + (colOf(to) + (code % 3) - 1);
   const build2 = map[buildSq];
-  const code2 = (rowOf(build2) - rowOf(to2) + 1) * 3 + (colOf(build2) - colOf(to2) + 1);
+  const code2 =
+    (rowOf(build2) - rowOf(to2) + 1) * 3 + (colOf(build2) - colOf(to2) + 1);
   return to2 * 9 + code2;
 }
 
@@ -60,7 +63,10 @@ export function transformAction(action: number, s: number): number {
  * action index each get that action's full share — the visit budget the
  * priors steer simply splits between them.
  */
-export function policyPriors(turns: Turn[], logits: ArrayLike<number>): Float64Array {
+export function policyPriors(
+  turns: Turn[],
+  logits: ArrayLike<number>,
+): Float64Array {
   const priors = new Float64Array(turns.length);
   let max = 0; // logit 0 participates whenever a turn is unencodable
   for (let i = 0; i < turns.length; i++) {

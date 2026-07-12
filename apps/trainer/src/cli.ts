@@ -13,26 +13,37 @@ import { dirname } from 'node:path';
 import { parseArgs } from 'node:util';
 import {
   ACTION_COUNT,
-  FEATURE_COUNT,
-  Mlp,
-  PolicyValueNet,
   augmentPvSamples,
   augmentSamples,
+  type Checkpoint,
+  type CheckpointEval,
   checkpointEvalFn,
   checkpointPolicyFn,
   createCheckpoint,
+  type EloRating,
+  FEATURE_COUNT,
+  Mlp,
+  type PlayerSpec,
+  PolicyValueNet,
   parsePlayerSpec,
   playerFromSpec,
   selfPlay,
   specName,
-  type Checkpoint,
-  type CheckpointEval,
-  type EloRating,
-  type PlayerSpec,
 } from '@santorini/ai';
-import { fitElo, performanceRating, type GauntletLine, type PairResult } from './elo.ts';
-import { BASELINES_FORMAT, readBaselines, readCheckpoint, writeJson, type Baselines } from './io.ts';
-import { gameToSgn, runMatch, type RunResult } from './run.ts';
+import {
+  fitElo,
+  type GauntletLine,
+  type PairResult,
+  performanceRating,
+} from './elo.ts';
+import {
+  BASELINES_FORMAT,
+  type Baselines,
+  readBaselines,
+  readCheckpoint,
+  writeJson,
+} from './io.ts';
+import { gameToSgn, type RunResult, runMatch } from './run.ts';
 
 const USAGE = `usage:
   trainer init      [--out models/gen-000.json] [--notes TEXT] [--force]
@@ -63,18 +74,23 @@ function loadCheckpoint(path: string): Checkpoint {
 
 function int(name: string, value: string): number {
   const x = Number(value);
-  if (!Number.isInteger(x)) throw new Error(`--${name} must be an integer (got ${value})`);
+  if (!Number.isInteger(x))
+    throw new Error(`--${name} must be an integer (got ${value})`);
   return x;
 }
 
 function float(name: string, value: string): number {
   const x = Number(value);
-  if (!Number.isFinite(x)) throw new Error(`--${name} must be a number (got ${value})`);
+  if (!Number.isFinite(x))
+    throw new Error(`--${name} must be a number (got ${value})`);
   return x;
 }
 
 function nameOf(spec: PlayerSpec): string {
-  return specName(spec, spec.kind === 'ckpt' ? loadCheckpoint(spec.path) : undefined);
+  return specName(
+    spec,
+    spec.kind === 'ckpt' ? loadCheckpoint(spec.path) : undefined,
+  );
 }
 
 /** Elo difference implied by a score fraction (clamped away from 0/1). */
@@ -84,7 +100,7 @@ function eloDiff(score: number): number {
 }
 
 function pct(x: number): string {
-  return (100 * x).toFixed(1) + '%';
+  return `${(100 * x).toFixed(1)}%`;
 }
 
 function signed(x: number): string {
@@ -100,7 +116,10 @@ function playPair(
   maxHalfTurns?: number,
   onGame?: Parameters<typeof runMatch>[3],
 ): RunResult {
-  const config: { games: number; seed: number; maxHalfTurns?: number } = { games, seed };
+  const config: { games: number; seed: number; maxHalfTurns?: number } = {
+    games,
+    seed,
+  };
   if (maxHalfTurns !== undefined) config.maxHalfTurns = maxHalfTurns;
   return runMatch(
     (s) => playerFromSpec(specA, s, loadCheckpoint),
@@ -143,7 +162,8 @@ function cmdMatch(args: string[]): void {
       sgn: { type: 'string' },
     },
   });
-  if (positionals.length !== 2) throw new Error('match needs exactly two player specs');
+  if (positionals.length !== 2)
+    throw new Error('match needs exactly two player specs');
   const specA = parsePlayerSpec(positionals[0]);
   const specB = parsePlayerSpec(positionals[1]);
   const nameA = nameOf(specA);
@@ -158,8 +178,10 @@ function cmdMatch(args: string[]): void {
     seed,
     int('max-half-turns', values['max-half-turns']),
     (game, i) => {
-      const names: [string, string] = game.aSeat === 0 ? [nameA, nameB] : [nameB, nameA];
-      const outcome = game.winner === null ? 'draw' : `${names[game.winner]} wins`;
+      const names: [string, string] =
+        game.aSeat === 0 ? [nameA, nameB] : [nameB, nameA];
+      const outcome =
+        game.winner === null ? 'draw' : `${names[game.winner]} wins`;
       console.log(
         `game ${String(i + 1).padStart(String(games).length)}/${games}  ` +
           `P1=${names[0]}  ${outcome} in ${game.sgn.length} half-turns`,
@@ -172,7 +194,9 @@ function cmdMatch(args: string[]): void {
     `\n${nameA} ${result.winsA} — ${result.winsB} ${nameB}` +
       (result.draws ? `  (${result.draws} draws)` : ''),
   );
-  console.log(`score ${pct(scored)} for ${nameA} ≈ ${signed(eloDiff(scored))} Elo`);
+  console.log(
+    `score ${pct(scored)} for ${nameA} ≈ ${signed(eloDiff(scored))} Elo`,
+  );
 
   if (values.sgn !== undefined) {
     const event = `trainer match seed=${seed}`;
@@ -194,7 +218,8 @@ function cmdCalibrate(args: string[]): void {
     },
   });
   const specStrings = values.players.split(/\s+/).filter(Boolean);
-  if (specStrings.length < 2) throw new Error('calibrate needs at least two players');
+  if (specStrings.length < 2)
+    throw new Error('calibrate needs at least two players');
   const specs = specStrings.map(parsePlayerSpec);
   const names = specs.map(nameOf);
   const games = int('games', values.games);
@@ -204,8 +229,19 @@ function cmdCalibrate(args: string[]): void {
   let pairIndex = 0;
   for (let i = 0; i < specs.length; i++) {
     for (let j = i + 1; j < specs.length; j++) {
-      const r = playPair(specs[i], specs[j], games, seed + SEED_STRIDE * pairIndex++);
-      results.push({ a: names[i], b: names[j], winsA: r.winsA, winsB: r.winsB, draws: r.draws });
+      const r = playPair(
+        specs[i],
+        specs[j],
+        games,
+        seed + SEED_STRIDE * pairIndex++,
+      );
+      results.push({
+        a: names[i],
+        b: names[j],
+        winsA: r.winsA,
+        winsB: r.winsB,
+        draws: r.draws,
+      });
       console.log(
         `${names[i]} ${r.winsA} — ${r.winsB} ${names[j]}` +
           (r.draws ? ` (${r.draws} draws)` : ''),
@@ -217,14 +253,19 @@ function cmdCalibrate(args: string[]): void {
   const ratings = fitElo(results, { anchor, anchorRating: 0 });
   console.log(`\nfitted Elo (${anchor} = 0):`);
   const order = [...names].sort((a, b) => ratings[b] - ratings[a]);
-  for (const name of order) console.log(`  ${name.padEnd(12)} ${Math.round(ratings[name])}`);
+  for (const name of order)
+    console.log(`  ${name.padEnd(12)} ${Math.round(ratings[name])}`);
 
   const baselines: Baselines = {
     format: BASELINES_FORMAT,
     calibratedAt: new Date().toISOString(),
     seed,
     gamesPerPair: games,
-    players: names.map((name, i) => ({ name, spec: specStrings[i], rating: ratings[name] })),
+    players: names.map((name, i) => ({
+      name,
+      spec: specStrings[i],
+      rating: ratings[name],
+    })),
     results,
   };
   writeJson(values.out, baselines);
@@ -242,7 +283,8 @@ function cmdGauntlet(args: string[]): void {
       update: { type: 'boolean', default: false },
     },
   });
-  if (positionals.length !== 1) throw new Error('gauntlet needs exactly one player spec');
+  if (positionals.length !== 1)
+    throw new Error('gauntlet needs exactly one player spec');
   const spec = parsePlayerSpec(positionals[0]);
   const name = nameOf(spec);
   const games = int('games', values.games);
@@ -268,15 +310,22 @@ function cmdGauntlet(args: string[]): void {
   });
 
   const rating = performanceRating(lines);
-  console.log(`\n${name} performance rating: ${Math.round(rating)} ` +
-    `(scale: ${baselines.players.map((p) => `${p.name}=${Math.round(p.rating)}`).join(', ')})`);
+  console.log(
+    `\n${name} performance rating: ${Math.round(rating)} ` +
+      `(scale: ${baselines.players.map((p) => `${p.name}=${Math.round(p.rating)}`).join(', ')})`,
+  );
 
   if (values.update) {
-    if (spec.kind !== 'ckpt') throw new Error('--update requires a ckpt: player spec');
+    if (spec.kind !== 'ckpt')
+      throw new Error('--update requires a ckpt: player spec');
     const ckpt = loadCheckpoint(spec.path);
     const perOpponent: EloRating['perOpponent'] = {};
     for (const l of lines) {
-      perOpponent[l.opponent] = { wins: l.wins, losses: l.losses, draws: l.draws };
+      perOpponent[l.opponent] = {
+        wins: l.wins,
+        losses: l.losses,
+        draws: l.draws,
+      };
     }
     ckpt.elo = {
       rating: Math.round(rating),
@@ -320,11 +369,16 @@ function cmdTrain(args: string[]): void {
   });
   const parent = readCheckpoint(values.parent);
   const generation = parent.generation + 1;
-  const out = values.out ?? `models/gen-${String(generation).padStart(3, '0')}.json`;
-  if (existsSync(out) && !values.force) throw new Error(`${out} exists (use --force to overwrite)`);
+  const out =
+    values.out ?? `models/gen-${String(generation).padStart(3, '0')}.json`;
+  if (existsSync(out) && !values.force)
+    throw new Error(`${out} exists (use --force to overwrite)`);
   const games = int('games', values.games);
   const seed = int('seed', values.seed);
-  const iterations = values.iters !== undefined ? int('iters', values.iters) : parent.search.iterations;
+  const iterations =
+    values.iters !== undefined
+      ? int('iters', values.iters)
+      : parent.search.iterations;
   const epochs = int('epochs', values.epochs);
 
   const parentPolicy = checkpointPolicyFn(parent.eval);
@@ -361,7 +415,9 @@ function cmdTrain(args: string[]): void {
   if (values.sgn !== undefined) {
     const name = `gen-${parent.generation}-selfplay`;
     const event = `trainer train seed=${seed}`;
-    const docs = result.games.map((g) => gameToSgn({ ...g, aSeat: 0 }, name, name, event));
+    const docs = result.games.map((g) =>
+      gameToSgn({ ...g, aSeat: 0 }, name, name, event),
+    );
     mkdirSync(dirname(values.sgn), { recursive: true });
     writeFileSync(values.sgn, docs.join('\n'));
     console.log(`wrote ${result.games.length} games to ${values.sgn}`);
@@ -382,10 +438,24 @@ function cmdTrain(args: string[]): void {
         ? new PolicyValueNet(parent.eval.params)
         : parent.eval.type === 'mlp@1'
           ? PolicyValueNet.fromMlp(parent.eval.params, ACTION_COUNT)
-          : PolicyValueNet.init(FEATURE_COUNT, int('hidden', values.hidden), ACTION_COUNT, seed + 999);
-    const samples = values.augment ? augmentPvSamples(result.samples) : result.samples;
-    if (values.augment) console.log(`augmented to ${samples.length} samples (8 symmetries)`);
-    const losses = net.train(samples, { epochs, batchSize, lr, seed: seed + 1, weightDecay });
+          : PolicyValueNet.init(
+              FEATURE_COUNT,
+              int('hidden', values.hidden),
+              ACTION_COUNT,
+              seed + 999,
+            );
+    const samples = values.augment
+      ? augmentPvSamples(result.samples)
+      : result.samples;
+    if (values.augment)
+      console.log(`augmented to ${samples.length} samples (8 symmetries)`);
+    const losses = net.train(samples, {
+      epochs,
+      batchSize,
+      lr,
+      seed: seed + 1,
+      weightDecay,
+    });
     losses.forEach((l, e) =>
       console.log(
         `epoch ${e + 1}/${epochs}  value loss ${l.value.toFixed(4)}  policy loss ${l.policy.toFixed(4)}`,
@@ -399,10 +469,20 @@ function cmdTrain(args: string[]): void {
       parent.eval.type === 'mlp@1'
         ? new Mlp(parent.eval.params)
         : Mlp.init(FEATURE_COUNT, int('hidden', values.hidden), seed + 999);
-    const samples = values.augment ? augmentSamples(result.samples) : result.samples;
-    if (values.augment) console.log(`augmented to ${samples.length} samples (8 symmetries)`);
-    const losses = net.train(samples, { epochs, batchSize, lr, seed: seed + 1 });
-    losses.forEach((loss, e) => console.log(`epoch ${e + 1}/${epochs}  loss ${loss.toFixed(4)}`));
+    const samples = values.augment
+      ? augmentSamples(result.samples)
+      : result.samples;
+    if (values.augment)
+      console.log(`augmented to ${samples.length} samples (8 symmetries)`);
+    const losses = net.train(samples, {
+      epochs,
+      batchSize,
+      lr,
+      seed: seed + 1,
+    });
+    losses.forEach((loss, e) =>
+      console.log(`epoch ${e + 1}/${epochs}  loss ${loss.toFixed(4)}`),
+    );
     evalSpec = { type: 'mlp@1', params: net.toParams() };
     hiddenSize = net.hiddenSize;
   }
@@ -420,8 +500,12 @@ function cmdTrain(args: string[]): void {
         (weightDecay > 0 ? `; wd=${weightDecay}` : ''),
   });
   writeJson(out, ckpt);
-  console.log(`wrote ${out} (gen ${generation}, ${evalSpec.type} ${hiddenSize} hidden)`);
-  console.log(`rate it: node apps/trainer/src/cli.ts gauntlet ckpt:${out} --update`);
+  console.log(
+    `wrote ${out} (gen ${generation}, ${evalSpec.type} ${hiddenSize} hidden)`,
+  );
+  console.log(
+    `rate it: node apps/trainer/src/cli.ts gauntlet ckpt:${out} --update`,
+  );
 }
 
 function main(): void {
@@ -429,15 +513,20 @@ function main(): void {
   try {
     switch (cmd) {
       case 'init':
-        return cmdInit(args);
+        cmdInit(args);
+        break;
       case 'match':
-        return cmdMatch(args);
+        cmdMatch(args);
+        break;
       case 'calibrate':
-        return cmdCalibrate(args);
+        cmdCalibrate(args);
+        break;
       case 'gauntlet':
-        return cmdGauntlet(args);
+        cmdGauntlet(args);
+        break;
       case 'train':
-        return cmdTrain(args);
+        cmdTrain(args);
+        break;
       default:
         console.error(USAGE);
         process.exitCode = 1;

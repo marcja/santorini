@@ -1,8 +1,14 @@
 import { applyTurn } from './apply.ts';
 import { GODS, godIdByName } from './gods/index.ts';
 import { legalTurns } from './movegen.ts';
+import {
+  formatSGN,
+  formatTurn,
+  parseSGN,
+  parseTurn,
+  turnKey,
+} from './notation.ts';
 import { createInitialState, type GameOptions } from './state.ts';
-import { formatSGN, formatTurn, parseSGN, parseTurn, turnKey } from './notation.ts';
 import type { GameState, GodId, Player, Turn } from './types.ts';
 
 /**
@@ -46,7 +52,10 @@ export class Game {
     const t = typeof turn === 'string' ? parseTurn(state, turn) : turn;
     const key = turnKey(t);
     const match = legalTurns(state).find((lt) => turnKey(lt) === key);
-    if (!match) throw new Error(`illegal turn: ${typeof turn === 'string' ? turn : formatTurn(state, t)}`);
+    if (!match)
+      throw new Error(
+        `illegal turn: ${typeof turn === 'string' ? turn : formatTurn(state, t)}`,
+      );
     const next = applyTurn(state, match);
     // "You must always perform a move then build on your turn. If you are
     // unable to, you lose."
@@ -77,13 +86,17 @@ export class Game {
   }
 
   toSGN(extraHeaders: Record<string, string> = {}): string {
-    const headers: Record<string, string> = { ...this.headers, ...extraHeaders };
+    const headers: Record<string, string> = {
+      ...this.headers,
+      ...extraHeaders,
+    };
     const [g0, g1] = this.states[0].gods;
     if (g0 !== 'none' || g1 !== 'none') {
       headers.God1 = GODS[g0].name;
       headers.God2 = GODS[g1].name;
     }
-    headers.Result = this.winner === 0 ? '1-0' : this.winner === 1 ? '0-1' : '*';
+    headers.Result =
+      this.winner === 0 ? '1-0' : this.winner === 1 ? '0-1' : '*';
     return formatSGN(headers, this.turnStrings);
   }
 

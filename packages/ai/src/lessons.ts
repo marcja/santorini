@@ -37,7 +37,12 @@ export function lessonState(spec: LessonPosition): GameState {
  * What the student's turn must achieve. All play-phase goals also accept an
  * outright win — finding a faster win than the intended answer never fails.
  */
-export type ExerciseGoal = 'win' | 'safe' | 'threat' | 'forced-win' | 'place-central';
+export type ExerciseGoal =
+  | 'win'
+  | 'safe'
+  | 'threat'
+  | 'forced-win'
+  | 'place-central';
 
 export interface Exercise {
   /** The task, e.g. "Find the winning move." (color-agnostic). */
@@ -67,24 +72,32 @@ export interface ExerciseResult {
 
 /** The middle nine squares (b2..d4). */
 const CENTER = new Set<number>();
-for (let c = 1; c <= 3; c++) for (let r = 1; r <= 3; r++) CENTER.add(square(c, r));
+for (let c = 1; c <= 3; c++)
+  for (let r = 1; r <= 3; r++) CENTER.add(square(c, r));
 
 const PRAISE: Record<Exclude<ExerciseGoal, 'place-central'>, string> = {
   win: "That's it — you moved up onto level 3 and won on the spot.",
   safe: 'Well played — the opponent is left with no winning move anywhere.',
   threat: "That's tempo — the opponent must spend their turn answering you.",
-  'forced-win': 'Perfect — more threats than one turn can answer. The game is decided.',
+  'forced-win':
+    'Perfect — more threats than one turn can answer. The game is decided.',
 };
 
 /** Judge the student's turn from `state` against the exercise goal. */
-export function checkExercise(ex: Exercise, state: GameState, turn: Turn): ExerciseResult {
+export function checkExercise(
+  ex: Exercise,
+  state: GameState,
+  turn: Turn,
+): ExerciseResult {
   if (ex.goal === 'place-central') {
     if (turn.kind !== 'place') return { passed: false, lines: [ex.hint] };
     const central = turn.squares.filter((q) => CENTER.has(q)).length;
     return central === 2
       ? {
           passed: true,
-          lines: ['Both workers in the middle nine squares — they reach most of the board.'],
+          lines: [
+            'Both workers in the middle nine squares — they reach most of the board.',
+          ],
         }
       : {
           passed: false,
@@ -102,10 +115,15 @@ export function checkExercise(ex: Exercise, state: GameState, turn: Turn): Exerc
   const passed =
     review.won ||
     (ex.goal === 'safe' && review.hangs.length === 0) ||
-    (ex.goal === 'threat' && review.hangs.length === 0 && review.created.length > 0) ||
+    (ex.goal === 'threat' &&
+      review.hangs.length === 0 &&
+      review.created.length > 0) ||
     (ex.goal === 'forced-win' && review.decisive);
   return passed
-    ? { passed, lines: [review.won ? PRAISE.win : PRAISE[ex.goal as 'safe'], ...facts] }
+    ? {
+        passed,
+        lines: [review.won ? PRAISE.win : PRAISE[ex.goal as 'safe'], ...facts],
+      }
     : { passed, lines: [...facts, ex.hint] };
 }
 
@@ -128,7 +146,11 @@ export const LESSONS: Lesson[] = [
     ],
     exercise: {
       task: 'Win the game right now.',
-      position: { heights: { b2: 2, c3: 3 }, student: ['b2', 'a1'], opponent: ['d5', 'e5'] },
+      position: {
+        heights: { b2: 2, c3: 3 },
+        student: ['b2', 'a1'],
+        opponent: ['d5', 'e5'],
+      },
       goal: 'win',
       hint: 'Find your worker on level 2 with a level-3 tower next to it — then step up.',
     },

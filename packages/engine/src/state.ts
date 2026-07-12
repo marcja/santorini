@@ -47,4 +47,5 @@ export function workerAt(s: GameState, sq: number): number {
   return -1;
 }
 
-export const ownerOf = (workerIndex: number): Player => (workerIndex >> 1) as Player;
+export const ownerOf = (workerIndex: number): Player =>
+  (workerIndex >> 1) as Player;

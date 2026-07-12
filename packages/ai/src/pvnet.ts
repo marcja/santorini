@@ -61,6 +61,7 @@ export class PolicyValueNet {
   private readonly wp: Float64Array;
   private readonly bp: Float64Array;
   /** Hidden activations of the last hidden() — reused by heads and backprop. */
+  // biome-ignore lint/correctness/noUnusedPrivateClassMembers: read via destructuring in hidden()/valueHead()/policyHead(), not a `this.h` access.
   private readonly h: Float64Array;
 
   constructor(params: PvNetParams) {
@@ -87,7 +88,12 @@ export class PolicyValueNet {
   }
 
   /** He-initialized shared layer; zero policy head = uniform initial priors. */
-  static init(inputSize: number, hiddenSize: number, actionCount: number, seed: number): PolicyValueNet {
+  static init(
+    inputSize: number,
+    hiddenSize: number,
+    actionCount: number,
+    seed: number,
+  ): PolicyValueNet {
     const rand = mulberry32(seed);
     const gauss = (): number =>
       Math.sqrt(-2 * Math.log(1 - rand())) * Math.cos(2 * Math.PI * rand());
@@ -202,7 +208,8 @@ export class PolicyValueNet {
           const logit = this.valueForward(x); // fills this.h
           const p = 1 / (1 + Math.exp(-logit));
           valueLossSum -=
-            y * Math.log(Math.max(p, 1e-12)) + (1 - y) * Math.log(Math.max(1 - p, 1e-12));
+            y * Math.log(Math.max(p, 1e-12)) +
+            (1 - y) * Math.log(Math.max(1 - p, 1e-12));
           const dLogit = p - y;
           gbv += dLogit;
           dh.fill(0);

@@ -1,6 +1,6 @@
 import type { GodId, Player, Turn } from '@santorini/engine';
 import { createInitialState, legalTurns } from '@santorini/engine';
-import { resolveTurn, type AiPlayer } from './player.ts';
+import { type AiPlayer, resolveTurn } from './player.ts';
 
 export interface GameConfig {
   gods?: [GodId, GodId];
@@ -15,7 +15,10 @@ export interface GameResult {
 }
 
 /** Play one game between two players. Trusts players to return legal turns. */
-export function playGame(players: [AiPlayer, AiPlayer], config: GameConfig = {}): GameResult {
+export function playGame(
+  players: [AiPlayer, AiPlayer],
+  config: GameConfig = {},
+): GameResult {
   const maxHalfTurns = config.maxHalfTurns ?? 400;
   let state = createInitialState({ gods: config.gods });
   const turns: Turn[] = [];

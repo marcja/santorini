@@ -23,7 +23,8 @@ export const NEIGHBORS: readonly (readonly Square[])[] = (() => {
         if (dc === 0 && dr === 0) continue;
         const cc = c + dc;
         const rr = r + dr;
-        if (cc >= 0 && cc < SIZE && rr >= 0 && rr < SIZE) n.push(square(cc, rr));
+        if (cc >= 0 && cc < SIZE && rr >= 0 && rr < SIZE)
+          n.push(square(cc, rr));
       }
     }
     out.push(n);
@@ -43,7 +44,8 @@ export function pushSquare(from: Square, to: Square): Square {
 
 const FILES = 'abcde';
 
-export const squareName = (sq: Square): string => FILES[colOf(sq)] + String(rowOf(sq) + 1);
+export const squareName = (sq: Square): string =>
+  FILES[colOf(sq)] + String(rowOf(sq) + 1);
 
 export function parseSquareName(s: string): Square {
   const col = FILES.indexOf(s[0]);

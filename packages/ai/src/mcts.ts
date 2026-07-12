@@ -1,8 +1,8 @@
 import type { GameState, Player, Turn } from '@santorini/engine';
 import { applyTurnInPlace, cloneState, legalTurns } from '@santorini/engine';
-import { EVAL_SCALE, evaluate, type EvalFn } from './eval.ts';
+import { EVAL_SCALE, type EvalFn, evaluate } from './eval.ts';
+import { type AiPlayer, resolveTurn } from './player.ts';
 import type { PolicyFn } from './policy.ts';
-import { resolveTurn, type AiPlayer } from './player.ts';
 import { mulberry32, pick, type Rng } from './rng.ts';
 
 export interface MctsOptions {
@@ -111,7 +111,13 @@ export class MctsPlayer implements AiPlayer {
     const winTurn = legal.find((t) => t.kind === 'move' && t.win);
     if (winTurn) {
       const stat = { turn: winTurn, visits: 0, value: 1 };
-      return { turn: winTurn, visits: 0, value: 1, children: [stat], pv: [winTurn] };
+      return {
+        turn: winTurn,
+        visits: 0,
+        value: 1,
+        children: [stat],
+        pv: [winTurn],
+      };
     }
 
     const root = this.makeNode(null, null, state);
@@ -140,7 +146,12 @@ export class MctsPlayer implements AiPlayer {
           path.push(node);
         }
       }
-      const v0 = node.proven !== null ? (node.proven === 0 ? 1 : 0) : this.playout(node.state);
+      const v0 =
+        node.proven !== null
+          ? node.proven === 0
+            ? 1
+            : 0
+          : this.playout(node.state);
       for (const n of path) {
         n.visits++;
         if (n.mover !== null) n.value += n.mover === 0 ? v0 : 1 - v0;
@@ -162,7 +173,12 @@ export class MctsPlayer implements AiPlayer {
     };
   }
 
-  private makeNode(turn: Turn | null, parent: Node | null, state: GameState, prior = 1): Node {
+  private makeNode(
+    turn: Turn | null,
+    parent: Node | null,
+    state: GameState,
+    prior = 1,
+  ): Node {
     let proven: Player | null = null;
     let untried: Turn[] = [];
     if (state.phase === 'over') {
@@ -177,9 +193,13 @@ export class MctsPlayer implements AiPlayer {
     let untriedPriors: Float64Array | null = null;
     if (this.policy !== null && untried.length > 0) {
       // Positions the policy declines (placement) get uniform priors.
-      const priors = this.policy(state, untried) ?? new Float64Array(untried.length).fill(1 / untried.length);
+      const priors =
+        this.policy(state, untried) ??
+        new Float64Array(untried.length).fill(1 / untried.length);
       // Sort turns ascending by prior so expand() pops the best remaining.
-      const order = untried.map((_, i) => i).sort((a, b) => priors[a] - priors[b]);
+      const order = untried
+        .map((_, i) => i)
+        .sort((a, b) => priors[a] - priors[b]);
       untried = order.map((i) => untried[i]);
       untriedPriors = Float64Array.from(order, (i) => priors[i]);
     }
@@ -225,7 +245,8 @@ export class MctsPlayer implements AiPlayer {
       bestScore = FPU + this.c * p * sqrtN;
     }
     for (const ch of node.children) {
-      const score = ch.value / ch.visits + (this.c * ch.prior * sqrtN) / (1 + ch.visits);
+      const score =
+        ch.value / ch.visits + (this.c * ch.prior * sqrtN) / (1 + ch.visits);
       if (score > bestScore) {
         bestScore = score;
         best = ch;
@@ -248,7 +269,12 @@ export class MctsPlayer implements AiPlayer {
       turn = node.untried.pop()!;
       prior = node.untriedPriors![node.untried.length];
     }
-    const child = this.makeNode(turn, node, resolveTurn(node.state, turn), prior);
+    const child = this.makeNode(
+      turn,
+      node,
+      resolveTurn(node.state, turn),
+      prior,
+    );
     node.children.push(child);
     return child;
   }

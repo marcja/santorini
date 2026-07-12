@@ -1,34 +1,34 @@
 import {
-  GODS,
-  GOD_IDS,
-  Game,
-  colOf,
-  rowOf,
-  squareName,
-  workerAt,
-  ownerOf,
-  type BuildAction,
-  type GameState,
-  type GodId,
-  type MoveTurn,
-  type Square,
-  type Turn,
-} from '@santorini/engine';
-import {
-  LESSONS,
+  type AiPlayer,
+  type CoachHint,
   checkExercise,
   coachHint,
+  type ExerciseResult,
+  LESSONS,
+  type Lesson,
+  type LessonLevel,
   lessonState,
   reviewLines,
   reviewTurn,
   threatSquares,
   winningTurns,
-  type AiPlayer,
-  type CoachHint,
-  type ExerciseResult,
-  type Lesson,
-  type LessonLevel,
 } from '@santorini/ai';
+import {
+  type BuildAction,
+  colOf,
+  Game,
+  type GameState,
+  GOD_IDS,
+  GODS,
+  type GodId,
+  type MoveTurn,
+  ownerOf,
+  rowOf,
+  type Square,
+  squareName,
+  type Turn,
+  workerAt,
+} from '@santorini/engine';
 import { AI_LEVELS, COACH_EVAL, COACH_POLICY } from './ai.ts';
 import './style.css';
 
@@ -179,7 +179,9 @@ const revEndEl = document.querySelector<HTMLButtonElement>('#rev-end')!;
 const replayPosEl = document.querySelector<HTMLSpanElement>('#replay-pos')!;
 const sgnEl = document.querySelector<HTMLTextAreaElement>('#sgn')!;
 const sgnMsgEl = document.querySelector<HTMLDivElement>('#sgn-msg')!;
-const ctlEls = [0, 1].map((c) => document.querySelector<HTMLSelectElement>(`#ctl-${c}`)!);
+const ctlEls = [0, 1].map(
+  (c) => document.querySelector<HTMLSelectElement>(`#ctl-${c}`)!,
+);
 const coachOnEl = document.querySelector<HTMLInputElement>('#coach-on')!;
 const coachBodyEl = document.querySelector<HTMLDivElement>('#coach-body')!;
 const lessonSelEl = document.querySelector<HTMLSelectElement>('#lesson-sel')!;
@@ -283,7 +285,9 @@ function startExercise(): void {
 }
 
 lessonBodyEl.addEventListener('click', (e) => {
-  const btn = (e.target as Element).closest<HTMLButtonElement>('button[data-act]');
+  const btn = (e.target as Element).closest<HTMLButtonElement>(
+    'button[data-act]',
+  );
   if (!btn || lessonIdx === null) return;
   if (btn.dataset.act === 'try') {
     startExercise();
@@ -329,10 +333,13 @@ function lessonHtml(): string {
 
 const anyAiSeat = (): boolean => controllers.some((c) => c !== 'human');
 /** Controller of the color whose turn it is. */
-const controllerToMove = (): Controller => controllers[colorOf(game.state.player)];
+const controllerToMove = (): Controller =>
+  controllers[colorOf(game.state.player)];
 /** True when the live game is waiting on an AI turn (paused or not). */
 const aiToMove = (): boolean =>
-  view === null && game.state.phase !== 'over' && controllerToMove() !== 'human';
+  view === null &&
+  game.state.phase !== 'over' &&
+  controllerToMove() !== 'human';
 
 function cancelAi(): void {
   if (aiTimer !== null) {
@@ -349,22 +356,27 @@ function cancelAi(): void {
 function scheduleAi(): void {
   cancelAi();
   if (aiPaused || !aiToMove()) return;
-  aiTimer = window.setTimeout(() => {
-    aiTimer = null;
-    if (aiPaused || !aiToMove()) return;
-    const color = colorOf(game.state.player);
-    const level = controllers[color] as number;
-    const player = (aiPlayers[color] ??= AI_LEVELS[level].make(newSeed()));
-    game.play(player.chooseTurn(game.state));
-    resetSelection();
-    render();
-  }, Math.max(aiDelay, 30)); // floor: let the board paint between AI turns
+  aiTimer = window.setTimeout(
+    () => {
+      aiTimer = null;
+      if (aiPaused || !aiToMove()) return;
+      const color = colorOf(game.state.player);
+      const level = controllers[color] as number;
+      const player = (aiPlayers[color] ??= AI_LEVELS[level].make(newSeed()));
+      game.play(player.chooseTurn(game.state));
+      resetSelection();
+      render();
+    },
+    Math.max(aiDelay, 30),
+  ); // floor: let the board paint between AI turns
 }
 
 for (const [c, sel] of ctlEls.entries()) {
   sel.innerHTML =
     '<option value="human">Human</option>' +
-    AI_LEVELS.map((l, i) => `<option value="${i}">AI: ${l.name} (${l.detail})</option>`).join('');
+    AI_LEVELS.map(
+      (l, i) => `<option value="${i}">AI: ${l.name} (${l.detail})</option>`,
+    ).join('');
   sel.addEventListener('change', () => {
     controllers[c] = sel.value === 'human' ? 'human' : Number(sel.value);
     aiPlayers[c] = null; // rebuild on next turn
@@ -452,7 +464,9 @@ function startGame(godOf: [GodId, GodId], startColor: number): void {
 }
 
 setupEl.addEventListener('click', (e) => {
-  const btn = (e.target as Element).closest<HTMLButtonElement>('button[data-act]');
+  const btn = (e.target as Element).closest<HTMLButtonElement>(
+    'button[data-act]',
+  );
   if (!btn || !draft) return;
   const act = btn.dataset.act!;
   if (act === 'cancel') {
@@ -462,20 +476,33 @@ setupEl.addEventListener('click', (e) => {
   } else if (act === 'base') {
     return startGame(['none', 'none'], 0);
   } else if (act === 'free') {
-    const g0 = setupEl.querySelector<HTMLSelectElement>('#free-god0')!.value as GodId;
-    const g1 = setupEl.querySelector<HTMLSelectElement>('#free-god1')!.value as GodId;
-    const start = Number(setupEl.querySelector<HTMLSelectElement>('#free-start')!.value);
+    const g0 = setupEl.querySelector<HTMLSelectElement>('#free-god0')!
+      .value as GodId;
+    const g1 = setupEl.querySelector<HTMLSelectElement>('#free-god1')!
+      .value as GodId;
+    const start = Number(
+      setupEl.querySelector<HTMLSelectElement>('#free-start')!.value,
+    );
     return startGame([g0, g1], start);
   } else if (act === 'toggle' && draft.stage === 'pick') {
     const id = btn.dataset.god as GodId;
     const i = draft.picks.indexOf(id);
     if (i >= 0) draft.picks.splice(i, 1);
     else if (draft.picks.length < 2) draft.picks.push(id);
-  } else if (act === 'offer' && draft.stage === 'pick' && draft.picks.length === 2) {
-    draft = { stage: 'steal', challenger: draft.challenger, offered: [draft.picks[0], draft.picks[1]] };
+  } else if (
+    act === 'offer' &&
+    draft.stage === 'pick' &&
+    draft.picks.length === 2
+  ) {
+    draft = {
+      stage: 'steal',
+      challenger: draft.challenger,
+      offered: [draft.picks[0], draft.picks[1]],
+    };
   } else if (act === 'steal' && draft.stage === 'steal') {
     const taken = btn.dataset.god as GodId; // the opponent's choice
-    const other = draft.offered[0] === taken ? draft.offered[1] : draft.offered[0];
+    const other =
+      draft.offered[0] === taken ? draft.offered[1] : draft.offered[0];
     const godOf: [GodId, GodId] =
       draft.challenger === 0 ? [other, taken] : [taken, other];
     draft = { stage: 'start', challenger: draft.challenger, godOf };
@@ -563,7 +590,8 @@ function renderSetup(): void {
 
 /** Position currently shown, as a turn count (0 = initial board). */
 const viewPos = (): number => view ?? game.turns.length;
-const viewState = (): GameState => (view === null ? game.state : game.stateAt(view));
+const viewState = (): GameState =>
+  view === null ? game.state : game.stateAt(view);
 
 function setView(k: number): void {
   const n = game.turns.length;
@@ -627,14 +655,18 @@ function moveCandidates(): MoveTurn[] {
   return game.legalTurns().filter((t): t is MoveTurn => t.kind === 'move');
 }
 
-const buildEq = (a: BuildAction, b: BuildAction): boolean => a.at === b.at && a.dome === b.dome;
+const buildEq = (a: BuildAction, b: BuildAction): boolean =>
+  a.at === b.at && a.dome === b.dome;
 
 /**
  * Builds of `all` not yet used by `used` (order-insensitive: Demeter's two
  * builds commute, and movegen emits them in one canonical order), or null if
  * `used` is not a sub-multiset of `all`.
  */
-function buildsRemaining(all: BuildAction[], used: BuildAction[]): BuildAction[] | null {
+function buildsRemaining(
+  all: BuildAction[],
+  used: BuildAction[],
+): BuildAction[] | null {
   const left = all.slice();
   for (const u of used) {
     const i = left.findIndex((b) => buildEq(b, u));
@@ -649,7 +681,8 @@ function compatible(t: MoveTurn): boolean {
   if (path.length === 0 || t.path[0] !== path[0]) return false;
   const tPre = t.preBuilds ?? [];
   if (pre.length > tPre.length) return false;
-  for (let i = 0; i < pre.length; i++) if (!buildEq(pre[i], tPre[i])) return false;
+  for (let i = 0; i < pre.length; i++)
+    if (!buildEq(pre[i], tPre[i])) return false;
   // Once the worker has moved, pre-building is over; once it has built,
   // moving is over (turn order: pre-builds, then path, then builds).
   if (path.length > 1 && tPre.length !== pre.length) return false;
@@ -682,13 +715,19 @@ function stepsFor(t: MoveTurn): Step[] {
 function uiOptions(): { steps: Step[]; finish: MoveTurn | null } {
   const steps: Step[] = [];
   let finish: MoveTurn | null = null;
-  if (view !== null || game.state.phase !== 'play' || path.length === 0) return { steps, finish };
+  if (view !== null || game.state.phase !== 'play' || path.length === 0)
+    return { steps, finish };
   for (const t of moveCandidates()) {
     if (!compatible(t)) continue;
     const ss = stepsFor(t);
     if (ss.length === 0) finish ??= t;
     for (const s of ss) {
-      if (!steps.some((o) => o.kind === s.kind && o.sq === s.sq && o.dome === s.dome)) steps.push(s);
+      if (
+        !steps.some(
+          (o) => o.kind === s.kind && o.sq === s.sq && o.dome === s.dome,
+        )
+      )
+        steps.push(s);
     }
   }
   return { steps, finish };
@@ -760,7 +799,8 @@ function levelRects(sq: Square, h: number): string {
     out += `<rect x="${cx(sq) - size / 2}" y="${cy(sq) - size / 2}" width="${size}" height="${size}"
       rx="${10 - lvl * 2}" fill="${fills[lvl]}" stroke="#c9c2b2" stroke-width="1.5"/>`;
   }
-  if (h === 4) out += `<circle cx="${cx(sq)}" cy="${cy(sq)}" r="17" fill="#3b6ea5" stroke="#2b4d7a" stroke-width="2"/>`;
+  if (h === 4)
+    out += `<circle cx="${cx(sq)}" cy="${cy(sq)}" r="17" fill="#3b6ea5" stroke="#2b4d7a" stroke-width="2"/>`;
   return out;
 }
 
@@ -779,9 +819,13 @@ function render(): void {
   // Coach: drop a hint the moment the displayed position changes; one-ply
   // facts (win/threat squares) are cheap enough to recompute every render.
   if (hint && hintKey !== coachKey()) hint = null;
-  const coachThreats = new Set(coachOn && s.phase === 'play' ? threatSquares(s) : []);
+  const coachThreats = new Set(
+    coachOn && s.phase === 'play' ? threatSquares(s) : [],
+  );
   const coachWins = new Set(
-    coachOn && s.phase === 'play' ? winningTurns(s).map((t) => t.path[t.path.length - 1]) : [],
+    coachOn && s.phase === 'play'
+      ? winningTurns(s).map((t) => t.path[t.path.length - 1])
+      : [],
   );
   const hintSquares = new Set<Square>();
   if (hint) {
@@ -790,7 +834,8 @@ function render(): void {
     } else {
       hintSquares.add(hint.turn.path[0]);
       hintSquares.add(hint.turn.path[hint.turn.path.length - 1]);
-      for (const b of [...(hint.turn.preBuilds ?? []), ...hint.turn.builds]) hintSquares.add(b.at);
+      for (const b of [...(hint.turn.preBuilds ?? []), ...hint.turn.builds])
+        hintSquares.add(b.at);
     }
   }
 
@@ -813,7 +858,8 @@ function render(): void {
       svg += workerCircle(sq, ownerOf(w), movedAway);
     }
     if (sq === pendingPlace) svg += workerCircle(sq, s.player, true);
-    if (path.length > 1 && sq === workerPos) svg += workerCircle(sq, s.player, true);
+    if (path.length > 1 && sq === workerPos)
+      svg += workerCircle(sq, s.player, true);
 
     if (workerPos === sq && blds.length === 0) {
       svg += `<circle cx="${cx(sq)}" cy="${cy(sq)}" r="21" fill="none" stroke="var(--accent)" stroke-width="3" pointer-events="none"/>`;
@@ -853,7 +899,8 @@ function render(): void {
   godsEl.innerHTML = godsHtml();
   aiPauseEl.disabled = !anyAiSeat();
   aiPauseEl.textContent = aiPaused ? 'Resume AI' : 'Pause AI';
-  statusEl.innerHTML = view === null ? statusText(steps, finish) : replayStatus(s);
+  statusEl.innerHTML =
+    view === null ? statusText(steps, finish) : replayStatus(s);
   recordEl.innerHTML = recordHtml();
   scheduleAi();
 }
@@ -862,7 +909,9 @@ function stepLabel(st: Step): string {
   const at = squareName(st.sq);
   if (st.kind === 'move') return `Move to ${at}`;
   const what = st.dome ? 'dome' : 'block';
-  return st.kind === 'pre' ? `Build ${what} at ${at} before moving` : `Build ${what} at ${at}`;
+  return st.kind === 'pre'
+    ? `Build ${what} at ${at} before moving`
+    : `Build ${what} at ${at}`;
 }
 
 function choiceHtml(): string {
@@ -873,12 +922,21 @@ function choiceHtml(): string {
   return `<div class="choice-title">${squareName(choice.sq)}:</div>${buttons}`;
 }
 
-function coachHtml(s: GameState, wins: Set<Square>, threats: Set<Square>): string {
+function coachHtml(
+  s: GameState,
+  wins: Set<Square>,
+  threats: Set<Square>,
+): string {
   const names = (set: Set<Square>): string =>
-    [...set].sort((a, b) => a - b).map(squareName).join(', ');
+    [...set]
+      .sort((a, b) => a - b)
+      .map(squareName)
+      .join(', ');
   const parts: string[] = [];
   if (feedback.length > 0) {
-    parts.push(`<div class="coach-feedback">${feedback.map((l) => `<p>${l}</p>`).join('')}</div>`);
+    parts.push(
+      `<div class="coach-feedback">${feedback.map((l) => `<p>${l}</p>`).join('')}</div>`,
+    );
   }
   if (s.phase === 'play') {
     if (wins.size > 0) {
@@ -894,10 +952,14 @@ function coachHtml(s: GameState, wins: Set<Square>, threats: Set<Square>): strin
   }
   if (s.phase !== 'over') parts.push('<button id="coach-hint">Hint</button>');
   if (hint) {
-    parts.push(`<div class="coach-lines">${hint.lines.map((l) => `<p>${l}</p>`).join('')}</div>`);
+    parts.push(
+      `<div class="coach-lines">${hint.lines.map((l) => `<p>${l}</p>`).join('')}</div>`,
+    );
     if (hint.candidates.length > 1) {
       const alts = hint.candidates
-        .map((c) => `${c.notation} (${Math.round(c.value * 100)}%, ${c.visits}v)`)
+        .map(
+          (c) => `${c.notation} (${Math.round(c.value * 100)}%, ${c.visits}v)`,
+        )
         .join(' · ');
       parts.push(`<p class="coach-cands">Candidates: ${alts}</p>`);
     }
@@ -937,14 +999,16 @@ function statusText(steps: Step[], finish: MoveTurn | null): string {
     const n = pendingPlace === null ? 1 : 2;
     return `${chip} ${playerLabel(s.player)}: place worker ${n} of 2`;
   }
-  if (path.length === 0) return `${chip} ${playerLabel(s.player)} to move — select a worker`;
+  if (path.length === 0)
+    return `${chip} ${playerLabel(s.player)} to move — select a worker`;
   const kinds = new Set(steps.map((st) => st.kind));
   const parts: string[] = [];
   if (kinds.has('move')) parts.push(path.length > 1 ? 'move again' : 'move');
   if (kinds.has('pre')) parts.push('build before moving');
   if (kinds.has('build')) parts.push(blds.length > 0 ? 'build again' : 'build');
   if (finish) parts.push('finish the turn');
-  if (parts.length === 0) return `${chip} ${playerLabel(s.player)} — no moves for this worker`;
+  if (parts.length === 0)
+    return `${chip} ${playerLabel(s.player)} — no moves for this worker`;
   return `${chip} ${playerLabel(s.player)} — ${parts.join(', or ')}`;
 }
 
