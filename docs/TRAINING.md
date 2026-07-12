@@ -1,8 +1,8 @@
 # AI Training Guide
 
 How to train the next generation, decide whether it's better, and ship it to
-the web app. Written for two readers: **Marc** running a quick generation by
-hand, and **Claude Code** continuing training autonomously in a future
+the web app. Written for two readers: **a human** running a quick generation
+by hand, and **Claude Code** continuing training autonomously in a future
 session. Current state as of 2026-07-12 (session 12): the strongest
 checkpoint is `models/gen-007.json` (`pv@1`, PUCT search, gauntlet 1132) and
 the loop was still rising when we stopped — no generation has failed to beat
