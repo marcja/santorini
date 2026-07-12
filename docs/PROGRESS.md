@@ -276,6 +276,18 @@ _Last updated: 2026-07-12 (session 12)_
   with all narration forms and the telltale visit concentration (208v top
   candidate vs 69/65/64), no console errors.
 
+- **(issue #3, PR1/6) Biome added in warn mode.** `@biomejs/biome` devDep,
+  root `biome.json` (recommended rules, scoped to `packages/*/src` +
+  `apps/*/src`; cognitive-complexity intentionally deferred), `npm run
+  lint`/`format` scripts, first-ever `.github/workflows/ci.yml` (Node 22,
+  `continue-on-error` on both Biome steps — nothing blocks yet). No source
+  files touched. Housekeeping only: `docs/PLAN.md` has no Biome/lint
+  checkboxes since this isn't on the deliverable roadmap. Remaining PRs in
+  the issue #3 sequence: PR2 mechanical cleanup, PR3 flips lint/format to
+  blocking (CI gate + PostToolUse format hook + git pre-commit), PR4 enables
+  `no-excessive-cognitive-complexity` in warn mode, PR5 fixes what it flags,
+  PR6 flips complexity to blocking.
+
 ## Next
 
 **Sequencing decision (2026-07-11):** cap AI training at a bounded

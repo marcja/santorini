@@ -35,6 +35,10 @@ already learned:
 
 - `npm test` — all workspace tests (vitest). `npm test -w @santorini/engine` for one package.
 - `npm run typecheck` — tsc over all packages.
+- `npm run lint` / `npm run format` — Biome, scoped to `packages/*/src` and
+  `apps/*/src`. **Report-only for now** (CI runs them with
+  `continue-on-error`; nothing blocks yet) — see `docs/PROGRESS.md` for the
+  warn-mode rollout plan tracked in issue #3.
 - Web dev server: use `.claude/launch.json` name `web` via the browser
   preview tools (never `npm run dev` in raw Bash — it blocks).
 
