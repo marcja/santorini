@@ -83,8 +83,11 @@ Separate offline app; the AI teaches itself via adversarial self-play.
       opponent takes one, Challenger gets the other and chooses the Start
       Player. Current free-pick dropdowns are a stand-in; in-game god
       behavior is unaffected.
-- [ ] Slice 2b: replay/analysis view (step through a finished game / load an
-      SGN record).
+- [x] Slice 2b: replay/analysis view — step through the game history
+      (stepper buttons / arrow keys / click a record move) with a read-only
+      board, load a pasted SGN record, export the current game as SGN;
+      verified by replaying a 49-turn Artemis/Atlas game and resuming live
+      play through the in-app browser (2026-07-11).
 - [ ] Slice 3: vs-AI using a persisted model artifact; AI-vs-AI at controllable rate.
 - [ ] Slice 4: coach — explains goals/plans/threats/countermoves, not just best
       moves; beginner/intermediate/advanced lesson content.

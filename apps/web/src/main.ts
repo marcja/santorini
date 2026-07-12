@@ -8,6 +8,7 @@ import {
   workerAt,
   ownerOf,
   type BuildAction,
+  type GameState,
   type GodId,
   type MoveTurn,
   type Square,
@@ -23,6 +24,9 @@ import './style.css';
 // admits several next actions a chooser appears; when the partial already
 // forms a complete turn but optional extras remain, a "Finish turn" button
 // plays it.
+//
+// Replay/analysis: step through the current game's history (buttons, arrow
+// keys, or clicking a move in the record) or load a pasted SGN record.
 
 type StepKind = 'pre' | 'move' | 'build';
 interface Step {
@@ -38,6 +42,10 @@ let path: Square[] = [];
 let blds: BuildAction[] = [];
 let pendingPlace: Square | null = null; // first of the two setup squares
 let choice: { sq: Square; steps: Step[] } | null = null;
+// Replay: null = live play at the latest position; a number = viewing the
+// position after that many turns (0 = initial board). Input is view-only
+// while replaying.
+let view: number | null = null;
 
 const PLAYER_NAME = ['Blue', 'Amber'];
 
@@ -65,7 +73,22 @@ app.innerHTML = `
         <div id="choice"></div>
         <div id="gods"></div>
         <h2>Record</h2>
+        <div class="replay">
+          <button id="rev-start" aria-label="Jump to start" title="Jump to start">⏮</button>
+          <button id="rev-back" aria-label="Step back" title="Step back">◀</button>
+          <button id="rev-fwd" aria-label="Step forward" title="Step forward">▶</button>
+          <button id="rev-end" aria-label="Jump to latest" title="Jump to latest">⏭</button>
+          <span id="replay-pos"></span>
+        </div>
         <pre id="record"></pre>
+        <h2>SGN</h2>
+        <textarea id="sgn" rows="4" aria-label="SGN text"
+          placeholder="Paste an SGN record and Load to replay it…"></textarea>
+        <div class="controls">
+          <button id="sgn-load">Load</button>
+          <button id="sgn-export">Export</button>
+        </div>
+        <div id="sgn-msg" role="status"></div>
       </aside>
     </div>
   </main>
@@ -80,13 +103,23 @@ const finishEl = document.querySelector<HTMLButtonElement>('#finish')!;
 const cancelEl = document.querySelector<HTMLButtonElement>('#cancel')!;
 const god0El = document.querySelector<HTMLSelectElement>('#god0')!;
 const god1El = document.querySelector<HTMLSelectElement>('#god1')!;
+const undoEl = document.querySelector<HTMLButtonElement>('#undo')!;
+const revStartEl = document.querySelector<HTMLButtonElement>('#rev-start')!;
+const revBackEl = document.querySelector<HTMLButtonElement>('#rev-back')!;
+const revFwdEl = document.querySelector<HTMLButtonElement>('#rev-fwd')!;
+const revEndEl = document.querySelector<HTMLButtonElement>('#rev-end')!;
+const replayPosEl = document.querySelector<HTMLSpanElement>('#replay-pos')!;
+const sgnEl = document.querySelector<HTMLTextAreaElement>('#sgn')!;
+const sgnMsgEl = document.querySelector<HTMLDivElement>('#sgn-msg')!;
 
 document.querySelector('#new')!.addEventListener('click', () => {
   game = new Game({ gods: [god0El.value as GodId, god1El.value as GodId] });
+  view = null;
+  sgnMsgEl.textContent = '';
   resetSelection();
   render();
 });
-document.querySelector('#undo')!.addEventListener('click', () => {
+undoEl.addEventListener('click', () => {
   game.undo();
   resetSelection();
   render();
@@ -113,6 +146,56 @@ choiceEl.addEventListener('click', (e) => {
   if (!btn || !choice) return;
   applyStep(choice.steps[Number(btn.dataset.i)]);
   render();
+});
+
+// --- replay / SGN ---
+
+/** Position currently shown, as a turn count (0 = initial board). */
+const viewPos = (): number => view ?? game.turns.length;
+const viewState = (): GameState => (view === null ? game.state : game.stateAt(view));
+
+function setView(k: number): void {
+  const n = game.turns.length;
+  const clamped = Math.max(0, Math.min(n, k));
+  view = clamped >= n ? null : clamped; // stepping to the end resumes live play
+  resetSelection();
+  render();
+}
+
+revStartEl.addEventListener('click', () => setView(0));
+revBackEl.addEventListener('click', () => setView(viewPos() - 1));
+revFwdEl.addEventListener('click', () => setView(viewPos() + 1));
+revEndEl.addEventListener('click', () => setView(game.turns.length));
+recordEl.addEventListener('click', (e) => {
+  const span = (e.target as Element).closest<HTMLElement>('.rec-move');
+  if (span) setView(Number(span.dataset.t) + 1);
+});
+document.addEventListener('keydown', (e) => {
+  if ((e.target as Element).closest('textarea, select, input')) return;
+  if (e.key === 'ArrowLeft' && viewPos() > 0) {
+    setView(viewPos() - 1);
+    e.preventDefault();
+  } else if (e.key === 'ArrowRight' && view !== null) {
+    setView(viewPos() + 1);
+    e.preventDefault();
+  }
+});
+
+document.querySelector('#sgn-load')!.addEventListener('click', () => {
+  try {
+    const loaded = Game.fromSGN(sgnEl.value);
+    game = loaded;
+    [god0El.value, god1El.value] = loaded.state.gods;
+    resetSelection();
+    sgnMsgEl.textContent = `Loaded ${loaded.turns.length} turns — step through with ▶.`;
+    setView(0);
+  } catch (err) {
+    sgnMsgEl.textContent = `Could not load SGN: ${(err as Error).message}`;
+  }
+});
+document.querySelector('#sgn-export')!.addEventListener('click', () => {
+  sgnEl.value = game.toSGN();
+  sgnMsgEl.textContent = 'Current game exported below.';
 });
 
 function resetSelection(): void {
@@ -184,7 +267,7 @@ function stepsFor(t: MoveTurn): Step[] {
 function uiOptions(): { steps: Step[]; finish: MoveTurn | null } {
   const steps: Step[] = [];
   let finish: MoveTurn | null = null;
-  if (game.state.phase !== 'play' || path.length === 0) return { steps, finish };
+  if (view !== null || game.state.phase !== 'play' || path.length === 0) return { steps, finish };
   for (const t of moveCandidates()) {
     if (!compatible(t)) continue;
     const ss = stepsFor(t);
@@ -210,6 +293,7 @@ function applyStep(s: Step): void {
 }
 
 function onCellClick(sq: Square): void {
+  if (view !== null) return; // replay is view-only
   const s = game.state;
   if (s.phase === 'over') return;
   choice = null;
@@ -271,7 +355,7 @@ function workerCircle(sq: Square, player: number, ghost = false): string {
 }
 
 function render(): void {
-  const s = game.state;
+  const s = viewState();
   const { steps, finish } = uiOptions();
   const partialBuilds = [...pre, ...blds];
 
@@ -314,10 +398,14 @@ function render(): void {
 
   finishEl.hidden = finish === null;
   cancelEl.hidden = path.length === 0 && pendingPlace === null;
+  undoEl.disabled = view !== null;
+  revStartEl.disabled = revBackEl.disabled = viewPos() === 0;
+  revFwdEl.disabled = revEndEl.disabled = view === null;
+  replayPosEl.textContent = `${viewPos()}/${game.turns.length}`;
   choiceEl.innerHTML = choiceHtml();
   godsEl.innerHTML = godsHtml();
-  statusEl.innerHTML = statusText(steps, finish);
-  recordEl.textContent = recordText();
+  statusEl.innerHTML = view === null ? statusText(steps, finish) : replayStatus(s);
+  recordEl.innerHTML = recordHtml();
 }
 
 function stepLabel(st: Step): string {
@@ -372,14 +460,24 @@ function statusText(steps: Step[], finish: MoveTurn | null): string {
   return `${chip} ${playerLabel(s.player)} — ${parts.join(', or ')}`;
 }
 
-function recordText(): string {
+function replayStatus(s: GameState): string {
+  const chip = `<span class="chip p${s.player + 1}"></span>`;
+  const verb = s.phase === 'setup' ? 'to place' : 'to move';
+  return `${chip} Replay ${viewPos()}/${game.turns.length} — ${playerLabel(s.player)} ${verb}`;
+}
+
+/** Numbered record with one clickable span per turn; the viewed turn is highlighted. */
+function recordHtml(): string {
   const t = game.turnStrings;
   if (t.length === 0) return '(no moves yet)';
-  const rounds: string[] = [];
-  for (let i = 0; i < t.length; i += 2) {
-    rounds.push(`${i / 2 + 1}. ${t[i]}${i + 1 < t.length ? ' ' + t[i + 1] : ''}`);
+  const parts: string[] = [];
+  for (let i = 0; i < t.length; i++) {
+    if (i % 2 === 0) parts.push(`${i / 2 + 1}. `);
+    const cur = view === i + 1 ? ' current' : '';
+    parts.push(`<span class="rec-move${cur}" data-t="${i}">${t[i]}</span>`);
+    parts.push(i % 2 === 0 ? ' ' : '\n');
   }
-  return rounds.join('\n');
+  return parts.join('').trimEnd();
 }
 
 render();
