@@ -4,9 +4,25 @@ export { evaluate, DEFAULT_EVAL_WEIGHTS, EVAL_SCALE, type EvalFn, type EvalWeigh
 export { encodeFeatures, transformFeatures, augmentSamples, FEATURE_COUNT, SYMMETRY_MAPS } from './features.ts';
 export { Mlp, type MlpParams, type Sample, type TrainOptions } from './mlp.ts';
 export {
+  ACTION_COUNT,
+  augmentPvSamples,
+  policyPriors,
+  transformAction,
+  turnAction,
+  type PolicyFn,
+} from './policy.ts';
+export {
+  PolicyValueNet,
+  type PvEpochLoss,
+  type PvNetParams,
+  type PvSample,
+  type PvTrainOptions,
+} from './pvnet.ts';
+export {
   CHECKPOINT_FORMAT,
   DEFAULT_SEARCH,
   checkpointEvalFn,
+  checkpointPolicyFn,
   createCheckpoint,
   validateCheckpoint,
   playerFromCheckpoint,

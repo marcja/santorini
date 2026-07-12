@@ -4,13 +4,15 @@ import type { SearchConfig } from './checkpoint.ts';
 import type { EvalFn } from './eval.ts';
 import { encodeFeatures } from './features.ts';
 import { MctsPlayer, type SearchResult } from './mcts.ts';
-import type { Sample } from './mlp.ts';
+import { turnAction, type PolicyFn } from './policy.ts';
+import type { PvSample } from './pvnet.ts';
 import { resolveTurn } from './player.ts';
 import { mulberry32 } from './rng.ts';
 
-// Self-play data generation for the value net: the current checkpoint's
-// searcher plays itself; every play-phase position becomes a training sample
-// labeled with the final outcome from the mover's perspective.
+// Self-play data generation: the current checkpoint's searcher plays itself;
+// every play-phase position becomes a training sample labeled with the final
+// outcome from the mover's perspective, plus the search's root visit
+// distribution as the policy target (what a pv net's policy head learns).
 
 export interface SelfPlayConfig {
   games: number;
@@ -18,6 +20,8 @@ export interface SelfPlayConfig {
   search: SearchConfig;
   /** Eval the self-play searcher uses (the parent checkpoint's). */
   evaluate: EvalFn;
+  /** Turn priors for the searcher (a pv parent's policy head) — enables PUCT. */
+  policy?: PolicyFn;
   /**
    * For the first N half-turns of each game, pick moves proportionally to
    * visit counts instead of argmax — without this every game repeats the
@@ -37,7 +41,7 @@ export interface SelfPlayGame {
 
 export interface SelfPlayResult {
   games: SelfPlayGame[];
-  samples: Sample[];
+  samples: PvSample[];
 }
 
 /** Sample a root child proportionally to visits (argmax when unvisited). */
@@ -52,6 +56,26 @@ function sampleTurn(result: SearchResult, rand: () => number): SearchResult['tur
   return result.turn;
 }
 
+/**
+ * The search's root visit distribution as a sparse policy target, aggregated
+ * by action index (turns can share an encoding) and normalized over the
+ * encodable turns. The instant-win shortcut searches nothing — its target is
+ * all mass on the winning action.
+ */
+function policyTarget(result: SearchResult): { actions: number[]; targets: number[] } {
+  const weights = new Map<number, number>();
+  let sum = 0;
+  const add = (action: number | null, w: number): void => {
+    if (action === null || w <= 0) return;
+    weights.set(action, (weights.get(action) ?? 0) + w);
+    sum += w;
+  };
+  if (result.visits === 0) add(turnAction(result.turn), 1);
+  else for (const ch of result.children) add(turnAction(ch.turn), ch.visits);
+  const actions = [...weights.keys()];
+  return { actions, targets: actions.map((a) => weights.get(a)! / sum) };
+}
+
 export function selfPlay(
   config: SelfPlayConfig,
   onGame?: (game: SelfPlayGame, index: number) => void,
@@ -60,7 +84,7 @@ export function selfPlay(
   const maxHalfTurns = config.maxHalfTurns ?? 400;
   const rand = mulberry32(config.seed ^ 0x5e1f);
   const games: SelfPlayGame[] = [];
-  const samples: Sample[] = [];
+  const samples: PvSample[] = [];
 
   for (let g = 0; g < config.games; g++) {
     const players = [0, 1].map(
@@ -68,6 +92,7 @@ export function selfPlay(
         new MctsPlayer({
           ...config.search,
           evaluate: config.evaluate,
+          policy: config.policy,
           seed: config.seed + 2 * g + p,
         }),
     );
@@ -75,18 +100,20 @@ export function selfPlay(
     let state = createInitialState();
     const sgn: string[] = [];
     // Positions seen this game, with who was to move; labeled once we know the winner.
-    const seen: { x: Float32Array; mover: Player }[] = [];
+    const seen: { x: Float32Array; mover: Player; actions: number[]; targets: number[] }[] = [];
     while (state.phase !== 'over' && sgn.length < maxHalfTurns) {
-      if (state.phase === 'play') seen.push({ x: encodeFeatures(state), mover: state.player });
       const result = players[state.player].search(state);
+      if (state.phase === 'play') {
+        seen.push({ x: encodeFeatures(state), mover: state.player, ...policyTarget(result) });
+      }
       const turn = sgn.length < temperatureTurns ? sampleTurn(result, rand) : result.turn;
       sgn.push(formatTurn(state, turn));
       state = resolveTurn(state, turn);
     }
     const winner = state.phase === 'over' ? state.winner : null;
 
-    for (const { x, mover } of seen) {
-      samples.push({ x, y: winner === null ? 0.5 : winner === mover ? 1 : 0 });
+    for (const { x, mover, actions, targets } of seen) {
+      samples.push({ x, y: winner === null ? 0.5 : winner === mover ? 1 : 0, actions, targets });
     }
     const game: SelfPlayGame = { winner, sgn };
     games.push(game);

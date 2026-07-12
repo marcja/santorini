@@ -12,16 +12,21 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { parseArgs } from 'node:util';
 import {
+  ACTION_COUNT,
   FEATURE_COUNT,
   Mlp,
+  PolicyValueNet,
+  augmentPvSamples,
   augmentSamples,
   checkpointEvalFn,
+  checkpointPolicyFn,
   createCheckpoint,
   parsePlayerSpec,
   playerFromSpec,
   selfPlay,
   specName,
   type Checkpoint,
+  type CheckpointEval,
   type EloRating,
   type PlayerSpec,
 } from '@santorini/ai';
@@ -39,7 +44,9 @@ const USAGE = `usage:
   trainer train     [--parent models/gen-000.json] [--out models/gen-NNN.json] [--games 200]
                     [--seed 1] [--iters PARENT] [--temp-turns 8] [--max-half-turns 400]
                     [--hidden 64] [--epochs 10] [--lr 0.2] [--batch 64] [--augment]
-                    [--sgn FILE] [--notes TEXT] [--force]
+                    [--pv] [--wd 0] [--sgn FILE] [--notes TEXT] [--force]
+                    (--pv trains a policy+value net -> PUCT search; implied by a pv parent.
+                     --wd = L2 weight decay, pv nets only)
 
 player specs: random | greedy | mcts:ITERS[,c=F][,depth=N] | ckpt:PATH[,iters=N]
 (the --players pool is space-separated because specs may contain commas)`;
@@ -301,6 +308,11 @@ function cmdTrain(args: string[]): void {
       batch: { type: 'string', default: '64' },
       // 8 board symmetries per sample — 8× data, teaches symmetry-invariance.
       augment: { type: 'boolean', default: false },
+      // Train a two-headed policy+value net (PUCT priors). Implied by a pv
+      // parent — a lineage never silently drops its policy head.
+      pv: { type: 'boolean', default: false },
+      // L2 weight decay (pv nets only) — the regularization lever.
+      wd: { type: 'string', default: '0' },
       sgn: { type: 'string' },
       notes: { type: 'string' },
       force: { type: 'boolean', default: false },
@@ -315,9 +327,11 @@ function cmdTrain(args: string[]): void {
   const iterations = values.iters !== undefined ? int('iters', values.iters) : parent.search.iterations;
   const epochs = int('epochs', values.epochs);
 
+  const parentPolicy = checkpointPolicyFn(parent.eval);
   console.log(
-    `self-play: ${games} games, mcts ${iterations} iters, ` +
-      `eval ${parent.eval.type} (gen ${parent.generation})`,
+    `self-play: ${games} games, mcts ${iterations} iters` +
+      (parentPolicy ? ' (PUCT)' : '') +
+      `, eval ${parent.eval.type} (gen ${parent.generation})`,
   );
   const started = Date.now();
   let decided = 0;
@@ -327,6 +341,7 @@ function cmdTrain(args: string[]): void {
       seed,
       search: { ...parent.search, iterations },
       evaluate: checkpointEvalFn(parent.eval),
+      ...(parentPolicy ? { policy: parentPolicy } : {}),
       temperatureTurns: int('temp-turns', values['temp-turns']),
       maxHalfTurns: int('max-half-turns', values['max-half-turns']),
     },
@@ -352,33 +367,60 @@ function cmdTrain(args: string[]): void {
     console.log(`wrote ${result.games.length} games to ${values.sgn}`);
   }
 
-  // Continue training a net parent; start fresh only from a static parent.
-  const net =
-    parent.eval.type === 'mlp@1'
-      ? new Mlp(parent.eval.params)
-      : Mlp.init(FEATURE_COUNT, int('hidden', values.hidden), seed + 999);
-  const samples = values.augment ? augmentSamples(result.samples) : result.samples;
-  if (values.augment) console.log(`augmented to ${samples.length} samples (8 symmetries)`);
-  const losses = net.train(samples, {
-    epochs,
-    batchSize: int('batch', values.batch),
-    lr: float('lr', values.lr),
-    seed: seed + 1,
-  });
-  losses.forEach((loss, e) => console.log(`epoch ${e + 1}/${epochs}  loss ${loss.toFixed(4)}`));
+  // A pv parent stays pv (--pv implied); otherwise --pv upgrades the lineage.
+  const pv = values.pv || parent.eval.type === 'pv@1';
+  const weightDecay = float('wd', values.wd);
+  const batchSize = int('batch', values.batch);
+  const lr = float('lr', values.lr);
+  let evalSpec: CheckpointEval;
+  let hiddenSize: number;
+  if (pv) {
+    // Warm start from an mlp parent: shared layer + value head continue the
+    // lineage, the zero policy head starts at uniform priors.
+    const net =
+      parent.eval.type === 'pv@1'
+        ? new PolicyValueNet(parent.eval.params)
+        : parent.eval.type === 'mlp@1'
+          ? PolicyValueNet.fromMlp(parent.eval.params, ACTION_COUNT)
+          : PolicyValueNet.init(FEATURE_COUNT, int('hidden', values.hidden), ACTION_COUNT, seed + 999);
+    const samples = values.augment ? augmentPvSamples(result.samples) : result.samples;
+    if (values.augment) console.log(`augmented to ${samples.length} samples (8 symmetries)`);
+    const losses = net.train(samples, { epochs, batchSize, lr, seed: seed + 1, weightDecay });
+    losses.forEach((l, e) =>
+      console.log(
+        `epoch ${e + 1}/${epochs}  value loss ${l.value.toFixed(4)}  policy loss ${l.policy.toFixed(4)}`,
+      ),
+    );
+    evalSpec = { type: 'pv@1', params: net.toParams() };
+    hiddenSize = net.hiddenSize;
+  } else {
+    // Continue training a net parent; start fresh only from a static parent.
+    const net =
+      parent.eval.type === 'mlp@1'
+        ? new Mlp(parent.eval.params)
+        : Mlp.init(FEATURE_COUNT, int('hidden', values.hidden), seed + 999);
+    const samples = values.augment ? augmentSamples(result.samples) : result.samples;
+    if (values.augment) console.log(`augmented to ${samples.length} samples (8 symmetries)`);
+    const losses = net.train(samples, { epochs, batchSize, lr, seed: seed + 1 });
+    losses.forEach((loss, e) => console.log(`epoch ${e + 1}/${epochs}  loss ${loss.toFixed(4)}`));
+    evalSpec = { type: 'mlp@1', params: net.toParams() };
+    hiddenSize = net.hiddenSize;
+  }
 
   const ckpt = createCheckpoint(new Date().toISOString(), {
     generation,
     parent: values.parent,
-    eval: { type: 'mlp@1', params: net.toParams() },
+    eval: evalSpec,
     search: parent.search,
     notes:
       values.notes ??
-      `self-play ${games} games @ mcts(${iterations}) from ${values.parent}` +
-        (values.augment ? '; 8-symmetry augmentation' : ''),
+      `self-play ${games} games @ mcts(${iterations})${parentPolicy ? ' PUCT' : ''} from ${values.parent}` +
+        (values.augment ? '; 8-symmetry augmentation' : '') +
+        (pv ? '; policy+value net' : '') +
+        (weightDecay > 0 ? `; wd=${weightDecay}` : ''),
   });
   writeJson(out, ckpt);
-  console.log(`wrote ${out} (gen ${generation}, mlp ${net.hiddenSize} hidden)`);
+  console.log(`wrote ${out} (gen ${generation}, ${evalSpec.type} ${hiddenSize} hidden)`);
   console.log(`rate it: node apps/trainer/src/cli.ts gauntlet ckpt:${out} --update`);
 }
 

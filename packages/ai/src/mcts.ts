@@ -1,13 +1,14 @@
 import type { GameState, Player, Turn } from '@santorini/engine';
 import { applyTurnInPlace, cloneState, legalTurns } from '@santorini/engine';
 import { EVAL_SCALE, evaluate, type EvalFn } from './eval.ts';
+import type { PolicyFn } from './policy.ts';
 import { resolveTurn, type AiPlayer } from './player.ts';
 import { mulberry32, pick, type Rng } from './rng.ts';
 
 export interface MctsOptions {
   /** Search iterations per move. */
   iterations?: number;
-  /** UCT exploration constant. */
+  /** Exploration constant (UCT; also PUCT's c_puct when `policy` is set). */
   c?: number;
   seed?: number;
   /**
@@ -18,6 +19,12 @@ export interface MctsOptions {
   playoutDepth?: number;
   /** Horizon evaluator (default: the static eval) — where a learned eval plugs in. */
   evaluate?: EvalFn;
+  /**
+   * Turn priors (a trained policy head). When set, selection/expansion use
+   * PUCT — prior-guided, highest-prior turns explored first — instead of
+   * UCT with uniform random expansion.
+   */
+  policy?: PolicyFn;
   /** Display name (default `mcts(<iterations>)`). */
   name?: string;
 }
@@ -48,6 +55,11 @@ interface Node {
   mover: Player | null;
   state: GameState;
   untried: Turn[];
+  /** Prior of each untried turn (PUCT only), aligned with `untried`, which is
+   * kept sorted ascending by prior so pop() expands the most promising next. */
+  untriedPriors: Float64Array | null;
+  /** Prior of the turn that led here (1 under plain UCT). */
+  prior: number;
   children: Node[];
   visits: number;
   /** Accumulated playout value from `mover`'s perspective. */
@@ -60,13 +72,20 @@ interface Node {
   proven: Player | null;
 }
 
-/** UCT Monte-Carlo tree search over full engine turns, random playouts. */
+/** First-play urgency: assumed value of a never-visited turn under PUCT. */
+const FPU = 0.5;
+
+/**
+ * Monte-Carlo tree search over full engine turns: UCT with uniform random
+ * expansion, or PUCT when a policy supplies turn priors.
+ */
 export class MctsPlayer implements AiPlayer {
   readonly name: string;
   private readonly iterations: number;
   private readonly c: number;
   private readonly playoutDepth: number;
   private readonly evalFn: EvalFn;
+  private readonly policy: PolicyFn | null;
   private rand: Rng;
 
   constructor(opts: MctsOptions = {}) {
@@ -74,6 +93,7 @@ export class MctsPlayer implements AiPlayer {
     this.c = opts.c ?? 1.0;
     this.playoutDepth = opts.playoutDepth ?? 8;
     this.evalFn = opts.evaluate ?? evaluate;
+    this.policy = opts.policy ?? null;
     this.rand = mulberry32(opts.seed ?? 1);
     this.name = opts.name ?? `mcts(${this.iterations})`;
   }
@@ -98,15 +118,27 @@ export class MctsPlayer implements AiPlayer {
 
     for (let i = 0; i < this.iterations; i++) {
       // Select down to a leaf, expand one child, evaluate, backpropagate.
+      // UCT expands as soon as a node has untried turns; PUCT weighs the best
+      // untried prior against the expanded children every step.
       const path: Node[] = [root];
       let node = root;
-      while (node.proven === null && node.untried.length === 0 && node.children.length > 0) {
-        node = this.selectChild(node);
-        path.push(node);
-      }
-      if (node.proven === null && node.untried.length > 0) {
-        node = this.expand(node);
-        path.push(node);
+      while (node.proven === null) {
+        if (this.policy !== null) {
+          if (node.untried.length === 0 && node.children.length === 0) break;
+          const pick = this.selectPuct(node);
+          node = pick ?? this.expand(node);
+          path.push(node);
+          if (pick === null) break;
+        } else {
+          if (node.untried.length > 0) {
+            node = this.expand(node);
+            path.push(node);
+            break;
+          }
+          if (node.children.length === 0) break;
+          node = this.selectChild(node);
+          path.push(node);
+        }
       }
       const v0 = node.proven !== null ? (node.proven === 0 ? 1 : 0) : this.playout(node.state);
       for (const n of path) {
@@ -130,7 +162,7 @@ export class MctsPlayer implements AiPlayer {
     };
   }
 
-  private makeNode(turn: Turn | null, parent: Node | null, state: GameState): Node {
+  private makeNode(turn: Turn | null, parent: Node | null, state: GameState, prior = 1): Node {
     let proven: Player | null = null;
     let untried: Turn[] = [];
     if (state.phase === 'over') {
@@ -142,11 +174,22 @@ export class MctsPlayer implements AiPlayer {
         untried = []; // decided — never expand below a proven node
       }
     }
+    let untriedPriors: Float64Array | null = null;
+    if (this.policy !== null && untried.length > 0) {
+      // Positions the policy declines (placement) get uniform priors.
+      const priors = this.policy(state, untried) ?? new Float64Array(untried.length).fill(1 / untried.length);
+      // Sort turns ascending by prior so expand() pops the best remaining.
+      const order = untried.map((_, i) => i).sort((a, b) => priors[a] - priors[b]);
+      untried = order.map((i) => untried[i]);
+      untriedPriors = Float64Array.from(order, (i) => priors[i]);
+    }
     return {
       turn,
       mover: parent ? parent.state.player : null,
       state,
       untried,
+      untriedPriors,
+      prior,
       children: [],
       visits: 0,
       value: 0,
@@ -168,13 +211,44 @@ export class MctsPlayer implements AiPlayer {
     return best;
   }
 
+  /**
+   * PUCT step: Q + c·P·√N/(1+n) over expanded children, versus the best
+   * untried turn at first-play urgency. Returns the child to descend into,
+   * or null to expand the top untried turn.
+   */
+  private selectPuct(node: Node): Node | null {
+    const sqrtN = Math.sqrt(node.visits);
+    let best: Node | null = null;
+    let bestScore = -Infinity;
+    if (node.untried.length > 0) {
+      const p = node.untriedPriors![node.untried.length - 1];
+      bestScore = FPU + this.c * p * sqrtN;
+    }
+    for (const ch of node.children) {
+      const score = ch.value / ch.visits + (this.c * ch.prior * sqrtN) / (1 + ch.visits);
+      if (score > bestScore) {
+        bestScore = score;
+        best = ch;
+      }
+    }
+    return best;
+  }
+
   private expand(node: Node): Node {
-    // Swap-pop a random untried turn.
-    const i = Math.floor(this.rand() * node.untried.length);
-    const turn = node.untried[i];
-    node.untried[i] = node.untried[node.untried.length - 1];
-    node.untried.pop();
-    const child = this.makeNode(turn, node, resolveTurn(node.state, turn));
+    let turn: Turn;
+    let prior = 1;
+    if (this.policy === null) {
+      // UCT: swap-pop a random untried turn.
+      const i = Math.floor(this.rand() * node.untried.length);
+      turn = node.untried[i];
+      node.untried[i] = node.untried[node.untried.length - 1];
+      node.untried.pop();
+    } else {
+      // PUCT: pop the highest remaining prior (untried is sorted ascending).
+      turn = node.untried.pop()!;
+      prior = node.untriedPriors![node.untried.length];
+    }
+    const child = this.makeNode(turn, node, resolveTurn(node.state, turn), prior);
     node.children.push(child);
     return child;
   }

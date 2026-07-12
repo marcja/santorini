@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { evaluate } from '../src/eval.ts';
 import { FEATURE_COUNT } from '../src/features.ts';
+import { ACTION_COUNT } from '../src/policy.ts';
 import { selfPlay, type SelfPlayConfig } from '../src/selfplay.ts';
 
 const CONFIG: SelfPlayConfig = {
@@ -22,6 +23,15 @@ describe('selfPlay', () => {
     for (const s of samples) {
       expect(s.x.length).toBe(FEATURE_COUNT);
       expect([0, 0.5, 1]).toContain(s.y);
+      // Policy targets: a normalized distribution over valid action indices.
+      expect(s.actions.length).toBeGreaterThan(0);
+      expect(s.actions.length).toBe(s.targets.length);
+      expect(s.actions.length).toBe(new Set(s.actions).size);
+      for (const a of s.actions) {
+        expect(a).toBeGreaterThanOrEqual(0);
+        expect(a).toBeLessThan(ACTION_COUNT);
+      }
+      expect(s.targets.reduce((a, b) => a + b, 0)).toBeCloseTo(1, 10);
     }
     // Decided games label both perspectives, so wins and losses both appear.
     if (games.every((g) => g.winner !== null)) {

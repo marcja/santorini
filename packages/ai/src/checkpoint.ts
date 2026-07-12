@@ -3,6 +3,8 @@ import { encodeFeatures, FEATURE_COUNT } from './features.ts';
 import { Mlp, type MlpParams } from './mlp.ts';
 import { MctsPlayer } from './mcts.ts';
 import type { AiPlayer } from './player.ts';
+import { ACTION_COUNT, policyPriors, type PolicyFn } from './policy.ts';
+import { PolicyValueNet, type PvNetParams } from './pvnet.ts';
 
 // Versioned model artifact stored as JSON in `models/`. Pure data + pure
 // helpers — file I/O belongs to apps/trainer. Bump the format string on any
@@ -32,11 +34,14 @@ export interface SearchConfig {
 
 /**
  * `static@1` = the linear hand eval; `mlp@1` = the learned value net over
- * feature encoding v1 (its logit is the mover's win probability).
+ * feature encoding v1 (its logit is the mover's win probability); `pv@1` =
+ * the two-headed net — same value contract plus a policy head over action
+ * encoding v1 (checkpoints of this type search with PUCT).
  */
 export type CheckpointEval =
   | { type: 'static@1'; weights: EvalWeights }
-  | { type: 'mlp@1'; params: MlpParams };
+  | { type: 'mlp@1'; params: MlpParams }
+  | { type: 'pv@1'; params: PvNetParams };
 
 export interface Checkpoint {
   format: typeof CHECKPOINT_FORMAT;
@@ -118,6 +123,26 @@ export function validateCheckpoint(data: unknown): Checkpoint {
     ) {
       fail('mlp@1 params have inconsistent shapes');
     }
+  } else if (c.eval?.type === 'pv@1') {
+    const p = c.eval.params;
+    if (p?.inputSize !== FEATURE_COUNT) {
+      fail(`pv@1 inputSize must be ${FEATURE_COUNT} (feature encoding v1)`);
+    }
+    if (p.actionCount !== ACTION_COUNT) {
+      fail(`pv@1 actionCount must be ${ACTION_COUNT} (action encoding v1)`);
+    }
+    if (
+      !Number.isInteger(p.hiddenSize) ||
+      p.hiddenSize < 1 ||
+      !numberArray(p.w1, p.hiddenSize * p.inputSize) ||
+      !numberArray(p.b1, p.hiddenSize) ||
+      !numberArray(p.wv, p.hiddenSize) ||
+      typeof p.bv !== 'number' ||
+      !numberArray(p.wp, p.actionCount * p.hiddenSize) ||
+      !numberArray(p.bp, p.actionCount)
+    ) {
+      fail('pv@1 params have inconsistent shapes');
+    }
   } else {
     fail(`unknown eval type ${JSON.stringify((c.eval as { type?: unknown } | null)?.type)}`);
   }
@@ -141,12 +166,28 @@ export function checkpointEvalFn(ev: CheckpointEval): EvalFn {
     const weights = ev.weights;
     return (state, me) => evaluate(state, me, weights);
   }
-  const net = new Mlp(ev.params);
   const buf = new Float32Array(FEATURE_COUNT);
+  const net = ev.type === 'mlp@1' ? new Mlp(ev.params) : new PolicyValueNet(ev.params);
+  const forward = net instanceof Mlp ? net.forward.bind(net) : net.valueForward.bind(net);
   return (state, me) => {
     // The net scores the player to move; negate for the other perspective.
-    const logit = net.forward(encodeFeatures(state, buf));
+    const logit = forward(encodeFeatures(state, buf));
     return (state.player === me ? logit : -logit) * EVAL_SCALE;
+  };
+}
+
+/**
+ * Build the PolicyFn a checkpoint's eval spec describes, or null when the
+ * eval has no policy head (such checkpoints search with plain UCT).
+ */
+export function checkpointPolicyFn(ev: CheckpointEval): PolicyFn | null {
+  if (ev.type !== 'pv@1') return null;
+  const net = new PolicyValueNet(ev.params);
+  const buf = new Float32Array(FEATURE_COUNT);
+  const logits = new Float64Array(ACTION_COUNT);
+  return (state, turns) => {
+    if (state.phase !== 'play') return null; // placements take no priors
+    return policyPriors(turns, net.policyForward(encodeFeatures(state, buf), logits));
   };
 }
 
@@ -157,13 +198,17 @@ export interface CheckpointPlayerOptions {
   name?: string;
 }
 
-/** Build the playing agent a checkpoint describes: MCTS over its eval. */
+/**
+ * Build the playing agent a checkpoint describes: MCTS over its eval —
+ * PUCT-guided by its policy head when the checkpoint has one.
+ */
 export function playerFromCheckpoint(ckpt: Checkpoint, opts: CheckpointPlayerOptions = {}): AiPlayer {
   return new MctsPlayer({
     ...ckpt.search,
     iterations: opts.iterations ?? ckpt.search.iterations,
     seed: opts.seed,
     evaluate: checkpointEvalFn(ckpt.eval),
+    policy: checkpointPolicyFn(ckpt.eval) ?? undefined,
     name: opts.name ?? `gen-${ckpt.generation}`,
   });
 }

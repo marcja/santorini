@@ -1,6 +1,6 @@
 # Progress
 
-_Last updated: 2026-07-12 (session 11)_
+_Last updated: 2026-07-12 (session 12)_
 
 ## Done
 
@@ -240,6 +240,42 @@ _Last updated: 2026-07-12 (session 11)_
   `getBoundingClientRect` × (screenshot/viewport scale) re-measured before
   each click sequence was the reliable recipe.
 
+- **AI return, part 1 (this session): PUCT policy priors — the plateau
+  levers work.** `packages/ai` additions: `policy.ts` (action encoding v1:
+  225 = destination square × 3×3 build-delta code, centre = winning move;
+  god extras collapse onto their primary components and share a prior;
+  placements take no priors), `pvnet.ts` (`pv@1`: two-headed net — shared
+  ReLU hidden layer, value head with the `mlp@1` contract, policy head over
+  the 225 actions; masked softmax CE over each sample's legal actions;
+  decoupled L2 weight decay = the regularization lever; warm start from an
+  `mlp@1` parent with a zero policy head = uniform priors). MCTS gains PUCT
+  (Q + c·P·√N/(1+n), FPU 0.5, prior-ordered expansion) when a policy is
+  supplied — the UCT path is untouched, so baselines/old rungs are
+  unaffected. Self-play samples now carry root visit distributions as
+  sparse policy targets (8-symmetry augmentation transforms action indices
+  with the planes). Trainer: `--pv` (implied by a pv parent) and `--wd`.
+  152 tests green (23 new); both new self-play dumps replay-verified.
+- **gen-006 + gen-007 (committed): two +232-Elo jumps, gauntlet 903→1132.**
+  gen-006 (500 games @ mcts(600) UCT self-play from gen-005, wd=1e-4):
+  19–5 vs gen-005, gauntlet **1001** — first to clear mcts(1000) (14–6).
+  Diagnosis (scratch probe): UCT visit targets are nearly uniform (top
+  action ~7% mass, entropy 3.6 nats ≈ the CE floor), so its policy head is
+  weak — the jump came from PUCT's visit concentration + the continued
+  value head. gen-007 (800 games — the more-games lever — @ mcts(600)
+  **PUCT** self-play from gen-006): policy loss finally moves (3.47→3.37),
+  19–5 vs gen-006, 23–1 vs gen-005, gauntlet **1132** (17–3 vs mcts(1000)).
+  Lineage: 841 → 903 → 878 → 841 → 1001 → 1132; no early-stop hit — the
+  loop is still rising, continuing is one `trainer train` command per gen.
+- **Ladder + web: Expert rung appended (gen-007), coach upgraded.**
+  `models/ladder.json`: Expert = ckpt:gen-007 (1132); Hard stays gen-005
+  (841) for rung spacing. `apps/web`: gen-007 bundled; coach hints now use
+  gen-007's value head *and* policy head (PUCT — `CoachOptions extends
+  MctsOptions`, so it's one option). Verified in the in-app browser:
+  Expert appears in both seat pickers, human-vs-Expert placements and a
+  full turn through the engine record (`2. c3-d3^c3 b4-a4^b5`), PUCT hint
+  with all narration forms and the telltale visit concentration (208v top
+  candidate vs 69/65/64), no console errors.
+
 ## Next
 
 **Sequencing decision (2026-07-11):** cap AI training at a bounded
@@ -265,10 +301,16 @@ rungs (random 0 / mcts(200) 657 / greedy 808 / gen-003 903).
    Done above). The web game teaching goal is feature-complete for now;
    polish (more lessons, god-specific exercises, richer god narration) can
    ride along future slices.
-6. Return to AI: PUCT priors (policy head over full-turn actions), more
-   games/generation, regularization — sized against slice-3 realities
-   (Hard ≈200–300 ms/move in-browser; main thread is fine today, a worker
-   becomes worthwhile if budgets rise ~10×).
+6. ~~Return to AI: PUCT priors (policy head over full-turn actions), more
+   games/generation, regularization~~ — done (see Done above; all three
+   levers landed and validated: gen-006/007, gauntlet 1001/1132).
+7. Keep the training loop turning (optional, cheap): **the full recipe,
+   decision rules, app-shipping steps, and plateau levers are documented in
+   `docs/TRAINING.md`** — one `trainer train` command per generation
+   (~15 min + eval), stop after two consecutive failures to beat the
+   parent. Watch in-browser Expert latency (PUCT pays a policy forward per
+   expansion, roughly 2× per move — fine today); a web worker becomes
+   worthwhile if budgets rise ~10×.
 
 ## Decisions / notes
 
