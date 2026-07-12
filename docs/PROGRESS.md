@@ -1,6 +1,6 @@
 # Progress
 
-_Last updated: 2026-07-11 (session 6)_
+_Last updated: 2026-07-11 (session 7)_
 
 ## Done
 
@@ -100,6 +100,29 @@ _Last updated: 2026-07-11 (session 6)_
   if needed). PUCT priors / more games per gen are deferred to the
   post-web return as planned.
 
+- **Web slice 2 (this session): god-power selection UI + generic multi-step
+  turn input.** `apps/web` only — no engine changes. God pickers (Blue/Amber)
+  applied on New game, active god cards shown in the sidebar. Turn input
+  rewritten to be god-generic: clicks accumulate a partial turn (pre-builds /
+  move path / builds) that is prefix-matched against `legalTurns()` — no
+  god-specific UI code. When one square admits several actions a chooser
+  panel appears ("Move to c4" / "Build block at c4"); when the partial is
+  already a complete legal turn but optional extras remain, a "Finish turn"
+  button plays it; fully-determined turns auto-play. Demeter build clicks
+  match order-insensitively (movegen emits one canonical order). Verified in
+  the in-app browser via SGN record after every action: base-game regression,
+  Artemis double move + win (`b4-a3#`, banner shows god), Demeter double
+  build auto-play and single build via Finish, Prometheus pre-build with
+  no-move-up visually enforced (`^a2b2-b3^a4`), Atlas dome chooser
+  (`d4-d5^e5D`), undo mid-game. Board cells now have `role="button"` +
+  aria-labels (the chooser/Finish buttons are click-targetable via the
+  accessibility tree; SVG cells still need coordinates).
+  **Known gap (issue #7):** god *selection* doesn't follow the rulebook's
+  draft — the Challenger picks two unique gods, the opponent takes one, the
+  Challenger gets the other and chooses the Start Player. Current free-pick
+  dropdowns (same god allowed, Blue always starts) are a stand-in; in-game
+  god behavior is unaffected.
+
 ## Next
 
 **Sequencing decision (2026-07-11):** cap AI training at a bounded
@@ -114,9 +137,9 @@ rungs (random 0 / mcts(200) 657 / greedy 808 / gen-003 903).
 2. ~~Bounded AI goal~~ — done (gen-004/005 trained, `models/ladder.json`
    frozen; see Done above). PUCT priors / more games/gen / regularization
    remain deferred to the post-web return.
-3. Web slice 2: god-power selection UI (engine supports it; UI is base-only),
-   generic multi-step turn input (Artemis paths, Demeter double builds,
-   Prometheus pre-build) — UI currently assumes path len 2 / 1 build.
+3. ~~Web slice 2: god-power selection UI + generic multi-step turn input~~ —
+   done (see Done above). Remaining slice-2 scope from PLAN: replay/analysis
+   view (step through a finished game / load an SGN record).
 4. Web slice 3: vs-AI play — engine+ai are pure TS, so `MctsPlayer` runs
    in-browser as-is (load `models/gen-XXX.json` via `playerFromCheckpoint`);
    AI-vs-AI at controllable rate; then coach layer.

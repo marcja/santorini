@@ -1,25 +1,48 @@
 import {
+  GODS,
+  GOD_IDS,
   Game,
   colOf,
   rowOf,
   squareName,
   workerAt,
   ownerOf,
+  type BuildAction,
+  type GodId,
   type MoveTurn,
   type Square,
 } from '@santorini/engine';
 import './style.css';
 
-// Pass-and-play, base game (no gods yet). Player 0 = Blue, player 1 = Amber.
+// Pass-and-play with god powers. Player 0 = Blue, player 1 = Amber.
+//
+// Turn input is generic: clicks accumulate a partial turn (pre-builds, move
+// path, builds) that is prefix-matched against legalTurns(), so multi-step
+// god turns — Artemis paths, Demeter/Hephaestus double builds, Prometheus
+// pre-builds, Atlas domes — need no god-specific UI code. When one square
+// admits several next actions a chooser appears; when the partial already
+// forms a complete turn but optional extras remain, a "Finish turn" button
+// plays it.
+
+type StepKind = 'pre' | 'move' | 'build';
+interface Step {
+  kind: StepKind;
+  sq: Square;
+  dome: boolean;
+}
 
 let game = new Game();
-let sel: Square | null = null; // selected worker's square
-let moveTo: Square | null = null; // chosen destination, awaiting build
+// Partial turn under construction. path[0] is the selected worker's square.
+let pre: BuildAction[] = [];
+let path: Square[] = [];
+let blds: BuildAction[] = [];
 let pendingPlace: Square | null = null; // first of the two setup squares
+let choice: { sq: Square; steps: Step[] } | null = null;
 
 const PLAYER_NAME = ['Blue', 'Amber'];
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
+const godOptions = GOD_IDS.map((id) => `<option value="${id}">${GODS[id].name}</option>`).join('');
 app.innerHTML = `
   <main>
     <header>
@@ -29,10 +52,18 @@ app.innerHTML = `
     <div class="layout">
       <svg id="board" viewBox="0 0 540 540" aria-label="game board"></svg>
       <aside>
+        <div class="setup">
+          <label>Blue god <select id="god0" aria-label="Blue god">${godOptions}</select></label>
+          <label>Amber god <select id="god1" aria-label="Amber god">${godOptions}</select></label>
+        </div>
         <div class="controls">
           <button id="new">New game</button>
           <button id="undo">Undo</button>
+          <button id="finish" hidden>Finish turn</button>
+          <button id="cancel" hidden>Cancel</button>
         </div>
+        <div id="choice"></div>
+        <div id="gods"></div>
         <h2>Record</h2>
         <pre id="record"></pre>
       </aside>
@@ -43,9 +74,15 @@ app.innerHTML = `
 const boardEl = document.querySelector<SVGSVGElement>('#board')!;
 const statusEl = document.querySelector<HTMLDivElement>('#status')!;
 const recordEl = document.querySelector<HTMLPreElement>('#record')!;
+const choiceEl = document.querySelector<HTMLDivElement>('#choice')!;
+const godsEl = document.querySelector<HTMLDivElement>('#gods')!;
+const finishEl = document.querySelector<HTMLButtonElement>('#finish')!;
+const cancelEl = document.querySelector<HTMLButtonElement>('#cancel')!;
+const god0El = document.querySelector<HTMLSelectElement>('#god0')!;
+const god1El = document.querySelector<HTMLSelectElement>('#god1')!;
 
 document.querySelector('#new')!.addEventListener('click', () => {
-  game = new Game();
+  game = new Game({ gods: [god0El.value as GodId, god1El.value as GodId] });
   resetSelection();
   render();
 });
@@ -54,39 +91,128 @@ document.querySelector('#undo')!.addEventListener('click', () => {
   resetSelection();
   render();
 });
+finishEl.addEventListener('click', () => {
+  const { finish } = uiOptions();
+  if (finish) {
+    game.play(finish);
+    resetSelection();
+    render();
+  }
+});
+cancelEl.addEventListener('click', () => {
+  resetSelection();
+  render();
+});
 boardEl.addEventListener('click', (e) => {
   const cell = (e.target as Element).closest<SVGGElement>('.cell');
   if (!cell) return;
   onCellClick(Number(cell.dataset.sq));
 });
+choiceEl.addEventListener('click', (e) => {
+  const btn = (e.target as Element).closest<HTMLButtonElement>('button');
+  if (!btn || !choice) return;
+  applyStep(choice.steps[Number(btn.dataset.i)]);
+  render();
+});
 
 function resetSelection(): void {
-  sel = null;
-  moveTo = null;
+  pre = [];
+  path = [];
+  blds = [];
   pendingPlace = null;
+  choice = null;
 }
+
+// --- partial-turn matching against legalTurns() ---
 
 function moveCandidates(): MoveTurn[] {
   return game.legalTurns().filter((t): t is MoveTurn => t.kind === 'move');
 }
 
-function moveDests(from: Square): Square[] {
-  return [...new Set(moveCandidates().filter((t) => t.path[0] === from).map((t) => t.path[1]))];
+const buildEq = (a: BuildAction, b: BuildAction): boolean => a.at === b.at && a.dome === b.dome;
+
+/**
+ * Builds of `all` not yet used by `used` (order-insensitive: Demeter's two
+ * builds commute, and movegen emits them in one canonical order), or null if
+ * `used` is not a sub-multiset of `all`.
+ */
+function buildsRemaining(all: BuildAction[], used: BuildAction[]): BuildAction[] | null {
+  const left = all.slice();
+  for (const u of used) {
+    const i = left.findIndex((b) => buildEq(b, u));
+    if (i < 0) return null;
+    left.splice(i, 1);
+  }
+  return left;
 }
 
-function buildTargets(from: Square, to: Square): Square[] {
-  return [
-    ...new Set(
-      moveCandidates()
-        .filter((t) => t.path[0] === from && t.path[1] === to && t.builds.length > 0)
-        .map((t) => t.builds[0].at),
-    ),
-  ];
+/** Is the current partial turn a prefix of legal turn t? */
+function compatible(t: MoveTurn): boolean {
+  if (path.length === 0 || t.path[0] !== path[0]) return false;
+  const tPre = t.preBuilds ?? [];
+  if (pre.length > tPre.length) return false;
+  for (let i = 0; i < pre.length; i++) if (!buildEq(pre[i], tPre[i])) return false;
+  // Once the worker has moved, pre-building is over; once it has built,
+  // moving is over (turn order: pre-builds, then path, then builds).
+  if (path.length > 1 && tPre.length !== pre.length) return false;
+  if (path.length > t.path.length) return false;
+  for (let i = 1; i < path.length; i++) if (path[i] !== t.path[i]) return false;
+  if (blds.length > 0 && path.length !== t.path.length) return false;
+  return buildsRemaining(t.builds, blds) !== null;
+}
+
+/** Next single actions the partial can take toward t. Empty = t is complete. */
+function stepsFor(t: MoveTurn): Step[] {
+  const tPre = t.preBuilds ?? [];
+  if (pre.length < tPre.length) {
+    const b = tPre[pre.length];
+    return [{ kind: 'pre', sq: b.at, dome: b.dome }];
+  }
+  const out: Step[] = [];
+  if (blds.length === 0 && path.length < t.path.length) {
+    out.push({ kind: 'move', sq: t.path[path.length], dome: false });
+  }
+  if (path.length === t.path.length) {
+    for (const b of buildsRemaining(t.builds, blds) ?? []) {
+      out.push({ kind: 'build', sq: b.at, dome: b.dome });
+    }
+  }
+  return out;
+}
+
+/** All next actions across compatible turns, plus a playable-now turn if any. */
+function uiOptions(): { steps: Step[]; finish: MoveTurn | null } {
+  const steps: Step[] = [];
+  let finish: MoveTurn | null = null;
+  if (game.state.phase !== 'play' || path.length === 0) return { steps, finish };
+  for (const t of moveCandidates()) {
+    if (!compatible(t)) continue;
+    const ss = stepsFor(t);
+    if (ss.length === 0) finish ??= t;
+    for (const s of ss) {
+      if (!steps.some((o) => o.kind === s.kind && o.sq === s.sq && o.dome === s.dome)) steps.push(s);
+    }
+  }
+  return { steps, finish };
+}
+
+function applyStep(s: Step): void {
+  choice = null;
+  if (s.kind === 'pre') pre.push({ at: s.sq, dome: s.dome });
+  else if (s.kind === 'move') path.push(s.sq);
+  else blds.push({ at: s.sq, dome: s.dome });
+  const { steps, finish } = uiOptions();
+  // Nothing further is possible: the turn is fully determined — play it.
+  if (finish && steps.length === 0) {
+    game.play(finish);
+    resetSelection();
+  }
 }
 
 function onCellClick(sq: Square): void {
   const s = game.state;
   if (s.phase === 'over') return;
+  choice = null;
 
   if (s.phase === 'setup') {
     const occupied = workerAt(s, sq) >= 0;
@@ -102,31 +228,17 @@ function onCellClick(sq: Square): void {
     return;
   }
 
-  const w = workerAt(s, sq);
-  const isOwn = w >= 0 && ownerOf(w) === s.player;
-
-  if (moveTo === null) {
-    if (isOwn) {
-      sel = sel === sq ? null : sq;
-    } else if (sel !== null && moveDests(sel).includes(sq)) {
-      const winTurn = moveCandidates().find((t) => t.path[0] === sel && t.path[1] === sq && t.win);
-      if (winTurn) {
-        game.play(winTurn);
-        resetSelection();
-      } else {
-        moveTo = sq;
-      }
-    } else {
-      sel = null;
-    }
+  const here = uiOptions().steps.filter((st) => st.sq === sq);
+  if (here.length === 1) {
+    applyStep(here[0]);
+  } else if (here.length > 1) {
+    choice = { sq, steps: here };
   } else {
-    if (sel !== null && buildTargets(sel, moveTo).includes(sq)) {
-      const turn = moveCandidates().find(
-        (t) => t.path[0] === sel && t.path[1] === moveTo && t.builds[0]?.at === sq,
-      )!;
-      game.play(turn);
-    }
+    // Not an action square: (re)select an own worker, or clear the partial.
+    const w = workerAt(s, sq);
+    const bareSame = path.length === 1 && path[0] === sq && pre.length === 0;
     resetSelection();
+    if (w >= 0 && ownerOf(w) === s.player && !bareSame) path = [sq];
   }
   render();
 }
@@ -160,57 +272,104 @@ function workerCircle(sq: Square, player: number, ghost = false): string {
 
 function render(): void {
   const s = game.state;
+  const { steps, finish } = uiOptions();
+  const partialBuilds = [...pre, ...blds];
+
+  // Heights as they'll look after this turn's builds so far.
+  const disp = s.heights.slice();
+  for (const b of partialBuilds) disp[b.at] = b.dome ? 4 : disp[b.at] + 1;
+
+  const workerPos = path.length > 0 ? path[path.length - 1] : null;
   let svg = '';
-
-  const dests = s.phase === 'play' && sel !== null && moveTo === null ? moveDests(sel) : [];
-  const builds = s.phase === 'play' && sel !== null && moveTo !== null ? buildTargets(sel, moveTo) : [];
-
   for (let sq = 0; sq < 25; sq++) {
-    svg += `<g class="cell" data-sq="${sq}">`;
+    svg += `<g class="cell" data-sq="${sq}" role="button" tabindex="0" aria-label="${squareName(sq)}">`;
     svg += `<rect class="tile" x="${cx(sq) - 46}" y="${cy(sq) - 46}" width="92" height="92" rx="12" fill="var(--sand)"/>`;
-    svg += levelRects(sq, s.heights[sq]);
+    svg += levelRects(sq, disp[sq]);
     // faint coordinate label
     svg += `<text x="${cx(sq) - 40}" y="${cy(sq) + 41}" font-size="10" fill="#8a8371" pointer-events="none">${squareName(sq)}</text>`;
 
     const w = workerAt(s, sq);
     if (w >= 0) {
-      const ghost = moveTo !== null && sq === sel;
-      svg += workerCircle(sq, ownerOf(w), ghost);
+      const movedAway = path.length > 1 && sq === path[0];
+      svg += workerCircle(sq, ownerOf(w), movedAway);
     }
     if (sq === pendingPlace) svg += workerCircle(sq, s.player, true);
-    if (moveTo === sq && sel !== null) svg += workerCircle(sq, s.player, true);
+    if (path.length > 1 && sq === workerPos) svg += workerCircle(sq, s.player, true);
 
-    if (sel === sq && moveTo === null) {
+    if (workerPos === sq && blds.length === 0) {
       svg += `<circle cx="${cx(sq)}" cy="${cy(sq)}" r="21" fill="none" stroke="var(--accent)" stroke-width="3" pointer-events="none"/>`;
     }
-    if (dests.includes(sq)) {
+    if (partialBuilds.some((b) => b.at === sq)) {
+      svg += `<circle cx="${cx(sq)}" cy="${cy(sq)}" r="26" fill="none" stroke="var(--build)" stroke-width="3" opacity="0.8" pointer-events="none"/>`;
+    }
+    if (steps.some((st) => st.kind === 'move' && st.sq === sq)) {
       svg += `<circle cx="${cx(sq)}" cy="${cy(sq)}" r="9" fill="var(--accent)" opacity="0.9" pointer-events="none"/>`;
     }
-    if (builds.includes(sq)) {
+    if (steps.some((st) => st.kind !== 'move' && st.sq === sq)) {
       svg += `<circle cx="${cx(sq)}" cy="${cy(sq)}" r="13" fill="none" stroke="var(--build)" stroke-width="4" stroke-dasharray="5 4" pointer-events="none"/>`;
     }
     svg += '</g>';
   }
   boardEl.innerHTML = svg;
 
-  statusEl.innerHTML = statusText();
+  finishEl.hidden = finish === null;
+  cancelEl.hidden = path.length === 0 && pendingPlace === null;
+  choiceEl.innerHTML = choiceHtml();
+  godsEl.innerHTML = godsHtml();
+  statusEl.innerHTML = statusText(steps, finish);
   recordEl.textContent = recordText();
 }
 
-function statusText(): string {
+function stepLabel(st: Step): string {
+  const at = squareName(st.sq);
+  if (st.kind === 'move') return `Move to ${at}`;
+  const what = st.dome ? 'dome' : 'block';
+  return st.kind === 'pre' ? `Build ${what} at ${at} before moving` : `Build ${what} at ${at}`;
+}
+
+function choiceHtml(): string {
+  if (!choice) return '';
+  const buttons = choice.steps
+    .map((st, i) => `<button data-i="${i}">${stepLabel(st)}</button>`)
+    .join('');
+  return `<div class="choice-title">${squareName(choice.sq)}:</div>${buttons}`;
+}
+
+function godsHtml(): string {
+  const [g0, g1] = game.state.gods;
+  if (g0 === 'none' && g1 === 'none') return '';
+  const line = (p: number, g: GodId) =>
+    g === 'none'
+      ? ''
+      : `<p><span class="chip p${p + 1}"></span> <strong>${GODS[g].name}</strong> — ${GODS[g].text}</p>`;
+  return line(0, g0) + line(1, g1);
+}
+
+function playerLabel(p: number): string {
+  const g = game.state.gods[p];
+  return g === 'none' ? PLAYER_NAME[p] : `${PLAYER_NAME[p]} (${GODS[g].name})`;
+}
+
+function statusText(steps: Step[], finish: MoveTurn | null): string {
   const s = game.state;
   const chip = `<span class="chip p${s.player + 1}"></span>`;
   if (s.phase === 'over') {
     const w = s.winner!;
-    return `<span class="chip p${w + 1}"></span> <strong>${PLAYER_NAME[w]} wins!</strong>`;
+    return `<span class="chip p${w + 1}"></span> <strong>${playerLabel(w)} wins!</strong>`;
   }
   if (s.phase === 'setup') {
     const n = pendingPlace === null ? 1 : 2;
-    return `${chip} ${PLAYER_NAME[s.player]}: place worker ${n} of 2`;
+    return `${chip} ${playerLabel(s.player)}: place worker ${n} of 2`;
   }
-  if (sel === null) return `${chip} ${PLAYER_NAME[s.player]} to move — select a worker`;
-  if (moveTo === null) return `${chip} ${PLAYER_NAME[s.player]} — choose a destination`;
-  return `${chip} ${PLAYER_NAME[s.player]} — choose where to build`;
+  if (path.length === 0) return `${chip} ${playerLabel(s.player)} to move — select a worker`;
+  const kinds = new Set(steps.map((st) => st.kind));
+  const parts: string[] = [];
+  if (kinds.has('move')) parts.push(path.length > 1 ? 'move again' : 'move');
+  if (kinds.has('pre')) parts.push('build before moving');
+  if (kinds.has('build')) parts.push(blds.length > 0 ? 'build again' : 'build');
+  if (finish) parts.push('finish the turn');
+  if (parts.length === 0) return `${chip} ${playerLabel(s.player)} — no moves for this worker`;
+  return `${chip} ${playerLabel(s.player)} — ${parts.join(', or ')}`;
 }
 
 function recordText(): string {

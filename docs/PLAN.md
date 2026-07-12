@@ -74,13 +74,20 @@ Separate offline app; the AI teaches itself via adversarial self-play.
 - [x] Slice 1: pass-and-play PvP, minimalist flat 2D overhead board (SVG),
       click to place/move/build, win detection — verified by playing a full
       game through the in-app browser. Includes live SGN record and undo.
-- [ ] Slice 2: replay/analysis view; god-power selection UI and generic
-      multi-step turn input (Artemis paths, Demeter double builds,
-      Prometheus pre-build).
+- [x] Slice 2a: god-power selection UI and generic multi-step turn input
+      (Artemis paths, Demeter double builds, Prometheus pre-build, Atlas
+      domes) — partial turns prefix-matched against `legalTurns()`, chooser
+      for ambiguous squares, "Finish turn" for optional extras; verified by
+      playing god games through the in-app browser (2026-07-11).
+- [ ] God draft per rulebook (issue #7): Challenger picks two unique gods,
+      opponent takes one, Challenger gets the other and chooses the Start
+      Player. Current free-pick dropdowns are a stand-in; in-game god
+      behavior is unaffected.
+- [ ] Slice 2b: replay/analysis view (step through a finished game / load an
+      SGN record).
 - [ ] Slice 3: vs-AI using a persisted model artifact; AI-vs-AI at controllable rate.
 - [ ] Slice 4: coach — explains goals/plans/threats/countermoves, not just best
       moves; beginner/intermediate/advanced lesson content.
-- [ ] God power selection UI.
 
 ## Non-functional requirements
 
