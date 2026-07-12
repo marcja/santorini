@@ -15,13 +15,19 @@ import {
   type Turn,
 } from '@santorini/engine';
 import {
+  LESSONS,
+  checkExercise,
   coachHint,
+  lessonState,
   reviewLines,
   reviewTurn,
   threatSquares,
   winningTurns,
   type AiPlayer,
   type CoachHint,
+  type ExerciseResult,
+  type Lesson,
+  type LessonLevel,
 } from '@santorini/ai';
 import { AI_LEVELS, COACH_EVAL } from './ai.ts';
 import './style.css';
@@ -129,6 +135,11 @@ app.innerHTML = `
           <label><input type="checkbox" id="coach-on"> Show threats and advice</label>
           <div id="coach-body" hidden></div>
         </div>
+        <h2>Learn</h2>
+        <div class="learn">
+          <select id="lesson-sel" aria-label="Lesson"></select>
+          <div id="lesson-body"></div>
+        </div>
         <div id="gods"></div>
         <h2>Record</h2>
         <div class="replay">
@@ -171,6 +182,8 @@ const sgnMsgEl = document.querySelector<HTMLDivElement>('#sgn-msg')!;
 const ctlEls = [0, 1].map((c) => document.querySelector<HTMLSelectElement>(`#ctl-${c}`)!);
 const coachOnEl = document.querySelector<HTMLInputElement>('#coach-on')!;
 const coachBodyEl = document.querySelector<HTMLDivElement>('#coach-body')!;
+const lessonSelEl = document.querySelector<HTMLSelectElement>('#lesson-sel')!;
+const lessonBodyEl = document.querySelector<HTMLDivElement>('#lesson-body')!;
 const aiPauseEl = document.querySelector<HTMLButtonElement>('#ai-pause')!;
 const aiDelayEl = document.querySelector<HTMLInputElement>('#ai-delay')!;
 const aiDelayValEl = document.querySelector<HTMLSpanElement>('#ai-delay-val')!;
@@ -189,9 +202,12 @@ let feedback: string[] = [];
 const coachKey = (): string =>
   `${game.state.gods.join()}|${viewPos()}|${game.turnStrings.join(' ')}`;
 
-/** Play a turn for a human seat, capturing coach feedback first. */
+/** Play a turn for a human seat, capturing coach/exercise feedback first. */
 function playHuman(t: Turn): void {
   feedback = coachOn ? reviewLines(reviewTurn(game.state, t)) : [];
+  if (exercise && exercise.verdict === null) {
+    exercise.verdict = checkExercise(exercise.lesson.exercise!, game.state, t);
+  }
   game.play(t);
 }
 
@@ -207,6 +223,102 @@ coachBodyEl.addEventListener('click', (e) => {
   hintKey = coachKey();
   render();
 });
+
+// --- lessons ---
+
+// The Learn panel: pick a lesson to read it; lessons with an exercise load a
+// hand-authored position onto the board ("Try it") and the student's next
+// turn is judged against the exercise goal via playHuman(). While a verdict
+// is showing the board is frozen — Retry reloads the position.
+let lessonIdx: number | null = null;
+let exercise: { lesson: Lesson; verdict: ExerciseResult | null } | null = null;
+
+const LEVEL_LABEL: Record<LessonLevel, string> = {
+  beginner: 'Beginner',
+  intermediate: 'Intermediate',
+  advanced: 'Advanced',
+};
+
+lessonSelEl.innerHTML =
+  '<option value="">Pick a lesson…</option>' +
+  (Object.keys(LEVEL_LABEL) as LessonLevel[])
+    .map(
+      (lvl) =>
+        `<optgroup label="${LEVEL_LABEL[lvl]}">` +
+        LESSONS.map((l, i) =>
+          l.level === lvl ? `<option value="${i}">${l.title}</option>` : '',
+        ).join('') +
+        '</optgroup>',
+    )
+    .join('');
+
+lessonSelEl.addEventListener('change', () => {
+  lessonIdx = lessonSelEl.value === '' ? null : Number(lessonSelEl.value);
+  exercise = null; // the board keeps its position; the check is off
+  render();
+});
+
+/** Load the selected lesson's exercise position as a fresh two-human game. */
+function startExercise(): void {
+  const lesson = LESSONS[lessonIdx!];
+  game = Game.fromState(lessonState(lesson.exercise!.position));
+  exercise = { lesson, verdict: null };
+  seatColor = [0, 1]; // the student is seat 0 = Blue
+  controllers = ['human', 'human'];
+  for (const sel of ctlEls) sel.value = 'human';
+  aiPlayers = [null, null];
+  aiPaused = false;
+  draft = null;
+  view = null;
+  feedback = [];
+  sgnMsgEl.textContent = '';
+  resetSelection();
+  renderSetup();
+  render();
+}
+
+lessonBodyEl.addEventListener('click', (e) => {
+  const btn = (e.target as Element).closest<HTMLButtonElement>('button[data-act]');
+  if (!btn || lessonIdx === null) return;
+  if (btn.dataset.act === 'try') {
+    startExercise();
+  } else if (btn.dataset.act === 'next') {
+    lessonIdx++;
+    lessonSelEl.value = String(lessonIdx);
+    exercise = null;
+    render();
+  }
+});
+
+function lessonHtml(): string {
+  if (lessonIdx === null) return '';
+  const lesson = LESSONS[lessonIdx];
+  const parts = [
+    `<div class="lesson-title">${lesson.title}
+      <span class="lesson-level">${LEVEL_LABEL[lesson.level]}</span></div>`,
+    ...lesson.body.map((p) => `<p>${p}</p>`),
+  ];
+  const ex = lesson.exercise;
+  if (ex && (!exercise || exercise.lesson !== lesson)) {
+    parts.push(`<div class="lesson-ex"><p><strong>Exercise:</strong> ${ex.task}</p>
+      <button data-act="try">Try it on the board</button></div>`);
+  } else if (ex && exercise!.verdict === null) {
+    parts.push(`<div class="lesson-ex"><p><strong>Your move:</strong> ${ex.task}</p>
+      <button data-act="try">Reset position</button></div>`);
+  } else if (ex) {
+    const v = exercise!.verdict!;
+    const nextBtn =
+      v.passed && lessonIdx + 1 < LESSONS.length
+        ? '<button data-act="next">Next lesson</button>'
+        : '';
+    parts.push(`<div class="lesson-ex ${v.passed ? 'lesson-pass' : 'lesson-fail'}">
+      <p><strong>${v.passed ? '✓ Solved' : '✗ Not quite'}</strong></p>
+      ${v.lines.map((l) => `<p>${l}</p>`).join('')}
+      <div class="draft-row"><button data-act="try">${v.passed ? 'Replay' : 'Retry'}</button>${nextBtn}</div>
+    </div>`);
+  }
+  return parts.join('');
+}
 
 // --- AI seats ---
 
@@ -269,6 +381,15 @@ document.querySelector('#new')!.addEventListener('click', () => {
   renderSetup();
 });
 undoEl.addEventListener('click', () => {
+  // During an exercise, undo = retry: take the attempt back, drop the verdict.
+  if (exercise) {
+    game.undo();
+    exercise.verdict = null;
+    feedback = [];
+    resetSelection();
+    render();
+    return;
+  }
   // Vs an AI, undo backs up to the human's previous decision point; in
   // AI-vs-AI, undo one turn and pause so the position can be inspected.
   if (anyAiSeat() && !controllers.includes('human')) aiPaused = true;
@@ -318,6 +439,7 @@ function startGame(godOf: [GodId, GodId], startColor: number): void {
   aiPlayers = [null, null]; // fresh AI seeds per game
   aiPaused = false;
   feedback = [];
+  exercise = null;
   sgnMsgEl.textContent = '';
   resetSelection();
   renderSetup();
@@ -472,6 +594,7 @@ document.querySelector('#sgn-load')!.addEventListener('click', () => {
     seatColor = [0, 1]; // SGN has no color info: first mover shows as Blue
     feedback = [];
     draft = null;
+    exercise = null;
     renderSetup();
     resetSelection();
     sgnMsgEl.textContent = `Loaded ${loaded.turns.length} turns — step through with ▶.`;
@@ -582,6 +705,7 @@ function applyStep(s: Step): void {
 function onCellClick(sq: Square): void {
   if (view !== null) return; // replay is view-only
   if (aiToMove()) return; // the AI seat's turn — humans can't move for it
+  if (exercise?.verdict) return; // attempt judged — Retry/Replay resets the board
   const s = game.state;
   if (s.phase === 'over') return;
   choice = null;
@@ -720,6 +844,7 @@ function render(): void {
   choiceEl.innerHTML = choiceHtml();
   coachBodyEl.hidden = !coachOn;
   coachBodyEl.innerHTML = coachOn ? coachHtml(s, coachWins, coachThreats) : '';
+  lessonBodyEl.innerHTML = lessonHtml();
   godsEl.innerHTML = godsHtml();
   aiPauseEl.disabled = !anyAiSeat();
   aiPauseEl.textContent = aiPaused ? 'Resume AI' : 'Pause AI';

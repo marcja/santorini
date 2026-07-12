@@ -102,8 +102,15 @@ Separate offline app; the AI teaches itself via adversarial self-play.
       candidates), post-move feedback on human plays (missed win, avoidable
       hang, block credit, created threat); verified through the in-app
       browser (2026-07-11).
-- [ ] Slice 4b: beginner/intermediate/advanced lesson content; richer plan
-      narration beyond one-ply facts + PV.
+- [x] Slice 4b: beginner/intermediate/advanced lesson content; richer plan
+      narration beyond one-ply facts + PV. 10-lesson curriculum in
+      `packages/ai/src/lessons.ts` (9 with interactive exercises judged by
+      the coach's exact facts: win / stay safe / create a threat / forced
+      win / central placement), Learn panel in `apps/web` (pick a lesson,
+      try its position on the board, verdict + retry/next). Coach narration
+      now detects forced wins (`forcedLoss` win-in-2 solver), annotates
+      climbs, narrates the PV in words, and compares top candidates.
+      Verified through the in-app browser (2026-07-12).
 
 ## Non-functional requirements
 

@@ -1,6 +1,6 @@
 # Progress
 
-_Last updated: 2026-07-11 (session 10)_
+_Last updated: 2026-07-12 (session 11)_
 
 ## Done
 
@@ -210,6 +210,36 @@ _Last updated: 2026-07-11 (session 10)_
   content (structured curriculum), richer plan narration beyond one-ply
   facts + PV.
 
+- **Web slice 4b (this session): lesson curriculum + richer plan narration —
+  slice 4 complete.** `packages/ai` coach upgrades: `forcedLoss()` (win-in-2
+  solver: every defender turn leaves a win-in-1; one movegen per legal turn),
+  `TurnReview.decisive` + "The win is forced" narration, climb annotations in
+  `describeTurn` ("move c2→c3 (up to level 2)"), `coachHint` now narrates the
+  PV in words ("The idea: you …; expect them to …"), flags unstoppable
+  suggestions ("you win next turn"), and compares the top candidates ("is
+  about as good" / "stands out"). New `packages/ai/src/lessons.ts`: 10-lesson
+  beginner→advanced curriculum (win condition, placement, gifting builds,
+  blocking, domes, tempo, double threat, racing, god powers, mobility), 9
+  with interactive exercises — declarative `LessonPosition` →
+  `lessonState()`, goals (`win`/`safe`/`threat`/`forced-win`/`place-central`)
+  judged by `checkExercise()` over the coach's exact facts; finding a faster
+  win never fails. Tests: every exercise solvable but non-trivial (some legal
+  turn passes, some fails), targeted checks (only the e4 dome saves
+  stop-the-threat; doming your own tower fails double-threat; Pan's descent
+  wins). 129 tests green. `apps/web`: Learn panel — lesson picker (optgroups
+  by level), prose, "Try it on the board" loads the position via
+  `Game.fromState` as a two-human game; the student's turn is judged in
+  `playHuman()`, verdict panel (✓ Solved praise / ✗ Not quite + review facts
+  + hint) freezes the board until Retry/Replay; Undo = retry; Next lesson
+  advances; new game / SGN load exits exercise mode. Verified in the in-app
+  browser: win exercise pass (`1. b2-c3#` + banner) and fail (missed-win +
+  threat facts + hint), frozen-board guard, placement exercise (`1. c3,d3`),
+  double-threat exercise with decisive verdict, hint showing all four new
+  narration forms, undo-retry, next-lesson nav; no console errors. Browser
+  click coordinates drifted twice (scroll + reflow) — per mistake log, in-page
+  `getBoundingClientRect` × (screenshot/viewport scale) re-measured before
+  each click sequence was the reliable recipe.
+
 ## Next
 
 **Sequencing decision (2026-07-11):** cap AI training at a bounded
@@ -230,9 +260,11 @@ rungs (random 0 / mcts(200) 657 / greedy 808 / gen-003 903).
    slice 2 is complete.
 4. ~~Web slice 3: vs-AI play; AI-vs-AI at controllable rate~~ — done (see
    Done above).
-5. Web slice 4: coach layer. ~~4a: threats/hints/move feedback~~ — done
-   (see Done above). 4b: beginner/intermediate/advanced lesson content;
-   richer plan narration.
+5. ~~Web slice 4: coach layer~~ — done. ~~4a: threats/hints/move feedback~~
+   (see Done above); ~~4b: lesson curriculum + richer plan narration~~ (see
+   Done above). The web game teaching goal is feature-complete for now;
+   polish (more lessons, god-specific exercises, richer god narration) can
+   ride along future slices.
 6. Return to AI: PUCT priors (policy head over full-turn actions), more
    games/generation, regularization — sized against slice-3 realities
    (Hard ≈200–300 ms/move in-browser; main thread is fine today, a worker

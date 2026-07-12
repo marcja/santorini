@@ -312,6 +312,67 @@ button.god-card strong {
   word-break: break-word;
 }
 
+.learn {
+  font-size: 13px;
+  line-height: 1.5;
+  margin-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.learn select {
+  background: var(--ink);
+  color: var(--sea);
+  border: none;
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-size: 13px;
+  font-weight: 600;
+  align-self: flex-start;
+  max-width: 100%;
+}
+
+.lesson-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.lesson-level {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  opacity: 0.6;
+  margin-left: 6px;
+}
+
+.learn p {
+  margin-bottom: 6px;
+  opacity: 0.9;
+}
+
+.lesson-ex {
+  border-left: 3px solid var(--coach);
+  padding: 6px 10px;
+  background: rgba(192, 132, 252, 0.12);
+  border-radius: 0 6px 6px 0;
+}
+
+.lesson-ex button {
+  padding: 4px 10px;
+  font-size: 13px;
+}
+
+.lesson-ex.lesson-pass {
+  border-color: var(--accent);
+  background: rgba(34, 197, 94, 0.14);
+}
+
+.lesson-ex.lesson-fail {
+  border-color: var(--danger);
+  background: rgba(239, 68, 68, 0.14);
+}
+
 #gods {
   font-size: 13px;
   line-height: 1.5;
