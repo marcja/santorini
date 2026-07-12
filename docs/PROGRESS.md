@@ -1,6 +1,6 @@
 # Progress
 
-_Last updated: 2026-07-11 (session 7)_
+_Last updated: 2026-07-11 (session 8)_
 
 ## Done
 
@@ -123,6 +123,20 @@ _Last updated: 2026-07-11 (session 7)_
   dropdowns (same god allowed, Blue always starts) are a stand-in; in-game
   god behavior is unaffected.
 
+- **Web slice 2b (this session): replay/analysis view.** `apps/web` only.
+  A `view` index (null = live play) renders `game.stateAt(view)` read-only:
+  stepper buttons ⏮◀▶⏭ with a position counter, clickable record moves
+  (current one highlighted), ArrowLeft/ArrowRight keys, Undo disabled while
+  viewing, stepping to the end resumes live play (you can keep playing —
+  including from a loaded mid-game record). SGN panel: Export fills a
+  textarea with `game.toSGN()`; Load runs `Game.fromSGN` (god dropdowns
+  synced, errors surfaced inline, prior state kept on failure). Verified in
+  the in-app browser: loaded a scratchpad-generated 49-turn Artemis/Atlas
+  game and stepped/jumped through it, board clicks confirmed no-ops during
+  replay, live game stepped back then resumed and continued, export → load
+  round trip, invalid-SGN error path. No engine changes (`Game.fromSGN`/
+  `stateAt`/`toSGN` already existed).
+
 ## Next
 
 **Sequencing decision (2026-07-11):** cap AI training at a bounded
@@ -138,8 +152,8 @@ rungs (random 0 / mcts(200) 657 / greedy 808 / gen-003 903).
    frozen; see Done above). PUCT priors / more games/gen / regularization
    remain deferred to the post-web return.
 3. ~~Web slice 2: god-power selection UI + generic multi-step turn input~~ —
-   done (see Done above). Remaining slice-2 scope from PLAN: replay/analysis
-   view (step through a finished game / load an SGN record).
+   done (see Done above). ~~Slice 2b: replay/analysis view~~ — done (see Done
+   above). Remaining slice-2 scope: god draft per rulebook (issue #7).
 4. Web slice 3: vs-AI play — engine+ai are pure TS, so `MctsPlayer` runs
    in-browser as-is (load `models/gen-XXX.json` via `playerFromCheckpoint`);
    AI-vs-AI at controllable rate; then coach layer.
