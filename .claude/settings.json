@@ -10,6 +10,16 @@
             "timeout": 10
           }
         ]
+      },
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=$(jq -r \".tool_input.file_path // empty\"); case \"$f\" in *.ts|*.tsx) out=$(npx biome format --write \"$f\" 2>&1); case \"$out\" in *\"Fixed \"*) jq -n --arg ctx \"Biome reformatted $f (PostToolUse hook, format-only, non-blocking).\" '{hookSpecificOutput:{hookEventName:\"PostToolUse\",additionalContext:$ctx}}';; esac ;; esac",
+            "timeout": 15
+          }
+        ]
       }
     ]
   }

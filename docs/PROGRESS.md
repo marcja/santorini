@@ -300,6 +300,18 @@ _Last updated: 2026-07-12 (session 12)_
   reads) — suppressed inline, not deleted. One CSS specificity warning in
   `style.css` suppressed inline (intentional, order-independent given
   specificity).
+- **(issue #3, PR3/6) Biome lint/format enforcement is now blocking.**
+  `.github/workflows/ci.yml` no longer has `continue-on-error` on the Biome
+  steps. `.claude/settings.json` gained a second `PostToolUse` entry
+  (appended, existing PROGRESS.md hook untouched): format-only, auto-fixes
+  `.ts`/`.tsx` files after Write/Edit and reports via `additionalContext` —
+  never blocks the edit itself, since a file mid-refactor may look
+  "unfinished" to a lint rule without actually being wrong. Local commit
+  enforcement is opt-in: `scripts/install-hooks.sh` points
+  `core.hooksPath` at `.githooks/` (not copied into `.git/hooks/`, so
+  clones that skip the install step rely on CI as the backstop — both
+  paths tested with a deliberate violation). Cognitive-complexity remains
+  deferred to PR4.
 
 ## Next
 
