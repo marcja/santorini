@@ -18,8 +18,10 @@ TypeScript monorepo (npm workspaces): `packages/engine` (headless rules),
 
 `docs/reference/rulebook.txt` and `docs/reference/god-powers-detailed.txt`
 (text extracted from official PDFs in `references/`). When a rule question
-arises, grep these files — do not rely on memory. Key subtleties already
-learned:
+arises, grep these files — do not rely on memory. Human-readable Markdown
+copies (`docs/reference/rulebook.md`, `docs/reference/god-powers-detailed.md`)
+exist for skimming, but the `.txt` files remain the grep-for-ground-truth
+source. Key subtleties already learned:
 
 - Win = your worker **moves up** onto level 3 (from 2). A worker *forced*
   onto level 3 (Apollo/Minotaur/etc.) does NOT win; L3→L3 moves do NOT win.
