@@ -14,8 +14,8 @@ We build in vertical slices: race to something playable end-to-end, then iterate
 
 High-performance, headless, dependency-free TypeScript library.
 
-- [x] Official rules grounded in `docs/reference/rulebook.txt` and
-      `docs/reference/god-powers-detailed.txt` (extracted from PDFs in `references/`).
+- [x] Official rules grounded in `docs/reference/rulebook.md` (reformatted
+      from the official rulebook PDF).
 - [x] Base 2-player game: 5×5 board, place 2 workers each, move+build turns,
       win by moving up onto level 3, lose when unable to move+build.
 - [x] Full-turn move generation (a "move" for engine consumers = complete turn),

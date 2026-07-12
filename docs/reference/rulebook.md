@@ -6,14 +6,17 @@
 > is a living document. Download the latest version from
 > roxley.com/santorini-rulebook."
 >
-> This file is a reformatted (Markdown) copy of [`rulebook.txt`](rulebook.txt),
-> which was extracted from the PDF above. Wording is preserved exactly; only
+> This file is a reformatted Markdown version of the rulebook, produced from
+> a raw-text PDF extraction (`rulebook.txt`, since removed as redundant once
+> this file was verified against it). Wording is preserved exactly; only
 > spacing artifacts, broken line breaks, and the page's callout/diagram
 > ordering (scrambled by PDF text extraction) have been cleaned up and
-> reflowed into headings and lists. The original `.txt` extraction is kept
-> unchanged alongside this file. Diagram/photo callouts (e.g. board
+> reflowed into headings and lists. Diagram/photo callouts (e.g. board
 > component labels A–E) are noted in italics since no images are embedded in
-> the extracted text.
+> the extracted text. This file is now the canonical rules reference for the
+> project (see `CLAUDE.md`); the source PDF and separate detailed-god-power-
+> cards reference (which only covered gods 1–30 and duplicated content
+> already in this file's God Power Index) were also removed.
 
 ## Components
 

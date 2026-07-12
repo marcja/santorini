@@ -4,14 +4,18 @@ _Last updated: 2026-07-11 (session 7)_
 
 ## Done
 
-- Extracted official rulebook + detailed god cards to `docs/reference/*.txt`.
-- **(issue #5) Reformatted `docs/reference/*.txt` into readable Markdown**
-  (`rulebook.md`, `god-powers-detailed.md`) — headings/lists, deduplicated
-  repeated boilerplate, source/copyright headers. Wording preserved exactly;
-  `.txt` originals kept unchanged as the grep-for-ground-truth source (see
-  CLAUDE.md). Two page-transition label swaps in the detailed-cards PDF
-  extraction (Eros/Hera, Persephone/Morpheus) were corrected and documented
-  in the new `.md` file's header.
+- **(issue #5) Reformatted the extracted rulebook into readable Markdown,
+  then consolidated to a single canonical doc.** `docs/reference/rulebook.md`
+  is now the ground-truth rules reference (see CLAUDE.md) — headings/lists,
+  a full 1–55 god/hero power index, source/copyright header. Two page-
+  transition label swaps found while cross-checking the detailed-god-power-
+  cards PDF extraction (Eros/Hera, Persephone/Morpheus) were corrected along
+  the way. Per PR review, the original `rulebook.txt`/`god-powers-detailed.
+  {txt,md}` extractions and their source PDFs (`references/Santorini_-_
+  Rulebook...pdf`, `references/Santorini_-_Detailed_God_Power_Cards_V2.pdf`)
+  were removed as duplicative once `rulebook.md` was verified against them;
+  `references/A Mathematical Analysis of the Game of Santorini.pdf` is
+  unrelated and was kept.
 - Plan (`docs/PLAN.md`), notation spec (`docs/NOTATION.md`), CLAUDE.md.
 - **Deliverable 1 (engine): complete for base game + 9 simple gods.**
   `packages/engine`: board/state/movegen/apply, SGN notation (format/parse/
