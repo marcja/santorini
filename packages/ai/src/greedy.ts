@@ -1,7 +1,7 @@
 import type { GameState, Turn } from '@santorini/engine';
 import { legalTurns } from '@santorini/engine';
 import { evaluate } from './eval.ts';
-import { resolveTurn, type AiPlayer } from './player.ts';
+import { type AiPlayer, resolveTurn } from './player.ts';
 import { mulberry32, pick, type Rng } from './rng.ts';
 
 const LOSS_PENALTY = 1e6;
@@ -38,7 +38,10 @@ export class GreedyPlayer implements AiPlayer {
       } else {
         score = evaluate(next, state.player);
         // Placements can't be won into; skip the opponent-win probe in setup.
-        if (next.phase === 'play' && legalTurns(next).some((ot) => ot.kind === 'move' && ot.win)) {
+        if (
+          next.phase === 'play' &&
+          legalTurns(next).some((ot) => ot.kind === 'move' && ot.win)
+        ) {
           score -= LOSS_PENALTY;
         }
       }

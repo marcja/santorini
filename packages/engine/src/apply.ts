@@ -13,7 +13,8 @@ import type { BuildAction, GameState, Player, Turn } from './types.ts';
 export function applyTurnInPlace(s: GameState, t: Turn): void {
   if (s.phase === 'over') throw new Error('game is over');
   if (t.kind === 'place') {
-    if (s.phase !== 'setup') throw new Error('placement only allowed during setup');
+    if (s.phase !== 'setup')
+      throw new Error('placement only allowed during setup');
     const base = s.player * 2;
     s.workers[base] = t.squares[0];
     s.workers[base + 1] = t.squares[1];
@@ -39,7 +40,8 @@ export function applyTurnInPlace(s: GameState, t: Turn): void {
     const occIdx = workerAt(s, to);
     if (occIdx >= 0) {
       if (cfg.allowOpp === 'swap') s.workers[occIdx] = from;
-      else if (cfg.allowOpp === 'push') s.workers[occIdx] = pushSquare(from, to);
+      else if (cfg.allowOpp === 'push')
+        s.workers[occIdx] = pushSquare(from, to);
       else throw new Error('illegal move into an occupied square');
     }
     if (s.heights[to] > s.heights[from]) movedUp = true;

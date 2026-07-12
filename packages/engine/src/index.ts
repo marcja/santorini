@@ -1,15 +1,35 @@
+export { applyTurn, applyTurnInPlace } from './apply.ts';
 export {
-  SIZE,
   CELLS,
-  NEIGHBORS,
   colOf,
-  rowOf,
-  square,
-  squareName,
+  NEIGHBORS,
   parseSquareName,
   pushSquare,
+  rowOf,
+  SIZE,
   type Square,
+  square,
+  squareName,
 } from './board.ts';
+export { Game } from './game.ts';
+export { GOD_IDS, GODS, type GodConfig, godIdByName } from './gods/index.ts';
+export { hasLegalTurn, legalTurns } from './movegen.ts';
+export {
+  formatSGN,
+  formatTurn,
+  parseSGN,
+  parseTurn,
+  type SgnDocument,
+  turnKey,
+} from './notation.ts';
+export {
+  cloneState,
+  createInitialState,
+  type GameOptions,
+  occupancy,
+  ownerOf,
+  workerAt,
+} from './state.ts';
 export type {
   BuildAction,
   GameState,
@@ -20,23 +40,3 @@ export type {
   Player,
   Turn,
 } from './types.ts';
-export {
-  createInitialState,
-  cloneState,
-  occupancy,
-  workerAt,
-  ownerOf,
-  type GameOptions,
-} from './state.ts';
-export { GODS, GOD_IDS, godIdByName, type GodConfig } from './gods/index.ts';
-export { legalTurns, hasLegalTurn } from './movegen.ts';
-export { applyTurn, applyTurnInPlace } from './apply.ts';
-export {
-  formatTurn,
-  parseTurn,
-  turnKey,
-  parseSGN,
-  formatSGN,
-  type SgnDocument,
-} from './notation.ts';
-export { Game } from './game.ts';

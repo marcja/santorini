@@ -1,6 +1,19 @@
-import type { GameState, MoveTurn, Player, Square, Turn } from '@santorini/engine';
-import { cloneState, colOf, formatTurn, legalTurns, rowOf, squareName } from '@santorini/engine';
-import { MctsPlayer, type MctsOptions } from './mcts.ts';
+import type {
+  GameState,
+  MoveTurn,
+  Player,
+  Square,
+  Turn,
+} from '@santorini/engine';
+import {
+  cloneState,
+  colOf,
+  formatTurn,
+  legalTurns,
+  rowOf,
+  squareName,
+} from '@santorini/engine';
+import { type MctsOptions, MctsPlayer } from './mcts.ts';
 import { resolveTurn } from './player.ts';
 
 // Coach layer: turns engine facts (win-in-1s, threats) and search statistics
@@ -13,7 +26,9 @@ import { resolveTurn } from './player.ts';
 /** Immediate winning turns for the player to move (empty outside `play`). */
 export function winningTurns(state: GameState): MoveTurn[] {
   if (state.phase !== 'play') return [];
-  return legalTurns(state).filter((t): t is MoveTurn => t.kind === 'move' && t.win);
+  return legalTurns(state).filter(
+    (t): t is MoveTurn => t.kind === 'move' && t.win,
+  );
 }
 
 const destination = (t: MoveTurn): Square => t.path[t.path.length - 1];
@@ -119,7 +134,11 @@ export function describeTurn(state: GameState, turn: Turn): string {
   const parts: string[] = [];
   const scratch = state.heights.slice();
   const build = (b: { at: Square; dome: boolean }): string => {
-    const what = b.dome ? 'a dome' : scratch[b.at] === 2 ? 'to level 3' : 'a block';
+    const what = b.dome
+      ? 'a dome'
+      : scratch[b.at] === 2
+        ? 'to level 3'
+        : 'a block';
     scratch[b.at] = b.dome ? 4 : scratch[b.at] + 1;
     return `build ${what} at ${squareName(b.at)}`;
   };
@@ -127,7 +146,8 @@ export function describeTurn(state: GameState, turn: Turn): string {
   const [from, dest] = [turn.path[0], turn.path[turn.path.length - 1]];
   let move = `move ${turn.path.map(squareName).join('→')}`;
   // Climbs are the strategic signal worth calling out (wins say it already).
-  if (!turn.win && scratch[dest] > scratch[from]) move += ` (up to level ${scratch[dest]})`;
+  if (!turn.win && scratch[dest] > scratch[from])
+    move += ` (up to level ${scratch[dest]})`;
   parts.push(move);
   for (const b of turn.builds) parts.push(build(b));
   const joined =
@@ -147,7 +167,13 @@ function planLine(states: GameState[], turns: Turn[]): string {
   const parts: string[] = [];
   for (let i = 0; i < plies; i++) {
     const step = describeTurn(states[i], turns[i]);
-    parts.push(i % 2 === 1 ? `expect them to ${step}` : i === 0 ? `you ${step}` : `then you ${step}`);
+    parts.push(
+      i % 2 === 1
+        ? `expect them to ${step}`
+        : i === 0
+          ? `you ${step}`
+          : `then you ${step}`,
+    );
   }
   return `The idea: ${parts.join('; ')}${turns.length > plies ? '; …' : '.'}`;
 }
@@ -183,11 +209,15 @@ export interface CoachOptions extends MctsOptions {
  * `state` must have at least one legal turn — live `play`/`setup` states
  * always do (no-move losses resolve when the previous turn is played).
  */
-export function coachHint(state: GameState, opts: CoachOptions = {}): CoachHint {
+export function coachHint(
+  state: GameState,
+  opts: CoachOptions = {},
+): CoachHint {
   // Placement branching (~600 pairs) starves MCTS visit counts into noise;
   // suggest by centrality directly — the honest version of the same advice.
   if (state.phase === 'setup') {
-    const central = (sq: Square): number => 2 - Math.max(Math.abs(colOf(sq) - 2), Math.abs(rowOf(sq) - 2));
+    const central = (sq: Square): number =>
+      2 - Math.max(Math.abs(colOf(sq) - 2), Math.abs(rowOf(sq) - 2));
     let turn = legalTurns(state)[0];
     let best = -Infinity;
     for (const t of legalTurns(state)) {
@@ -241,7 +271,9 @@ export function coachHint(state: GameState, opts: CoachOptions = {}): CoachHint 
     lines.push(`Suggested: ${describeTurn(state, result.turn)} (${notation}).`);
     const after = resolveTurn(state, result.turn);
     if (after.phase === 'over' && after.winner === state.player) {
-      lines.push('This leaves the opponent with no legal move — they lose immediately.');
+      lines.push(
+        'This leaves the opponent with no legal move — they lose immediately.',
+      );
     } else if (after.phase === 'play') {
       const hangsLeft = uniqueSquares(winningTurns(after));
       const madeThreats = threatSquares(after);
@@ -257,14 +289,18 @@ export function coachHint(state: GameState, opts: CoachOptions = {}): CoachHint 
         );
       }
     }
-    lines.push(`Estimated winning chances after it: ${Math.round(result.value * 100)}%.`);
+    lines.push(
+      `Estimated winning chances after it: ${Math.round(result.value * 100)}%.`,
+    );
     if (result.pv.length > 1) lines.push(planLine(pvStates, result.pv));
     if (result.children.length >= 2) {
       const alt = result.children[1];
       const gap = result.children[0].value - alt.value;
       const altText = `${formatTurn(state, alt.turn)} (${Math.round(alt.value * 100)}%)`;
-      if (gap >= 0.2) lines.push(`This stands out — the next-best try is ${altText}.`);
-      else if (gap >= 0 && gap <= 0.05) lines.push(`${altText} is about as good.`);
+      if (gap >= 0.2)
+        lines.push(`This stands out — the next-best try is ${altText}.`);
+      else if (gap >= 0 && gap <= 0.05)
+        lines.push(`${altText} is about as good.`);
     }
   }
 
@@ -290,7 +326,9 @@ export function reviewLines(review: TurnReview): string[] {
   const lines: string[] = [];
   if (review.won) return lines; // the banner says it all
   if (review.missedWins.length > 0) {
-    lines.push(`You had a winning move onto ${names(review.missedWins)} and played something else.`);
+    lines.push(
+      `You had a winning move onto ${names(review.missedWins)} and played something else.`,
+    );
   }
   if (review.hangs.length > 0) {
     lines.push(

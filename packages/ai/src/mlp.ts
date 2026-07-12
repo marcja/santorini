@@ -39,11 +39,16 @@ export class Mlp {
   private readonly w2: Float64Array;
   private b2: number;
   /** Hidden activations of the last forward() — reused by backprop. */
+  // biome-ignore lint/correctness/noUnusedPrivateClassMembers: read via destructuring in forward()/train(), not a `this.h` access.
   private readonly h: Float64Array;
 
   constructor(params: MlpParams) {
     const { inputSize, hiddenSize } = params;
-    if (params.w1.length !== hiddenSize * inputSize || params.b1.length !== hiddenSize || params.w2.length !== hiddenSize) {
+    if (
+      params.w1.length !== hiddenSize * inputSize ||
+      params.b1.length !== hiddenSize ||
+      params.w2.length !== hiddenSize
+    ) {
       throw new Error('MlpParams shape mismatch');
     }
     this.inputSize = inputSize;
@@ -125,7 +130,9 @@ export class Mlp {
           const { x, y } = samples[order[k]];
           const logit = this.forward(x);
           const p = 1 / (1 + Math.exp(-logit));
-          lossSum += y * Math.log(Math.max(p, 1e-12)) + (1 - y) * Math.log(Math.max(1 - p, 1e-12));
+          lossSum +=
+            y * Math.log(Math.max(p, 1e-12)) +
+            (1 - y) * Math.log(Math.max(1 - p, 1e-12));
           const dLogit = p - y;
           gb2 += dLogit;
           for (let j = 0; j < hiddenSize; j++) {

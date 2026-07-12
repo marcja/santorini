@@ -1,4 +1,4 @@
-import { playerFromCheckpoint, type Checkpoint } from './checkpoint.ts';
+import { type Checkpoint, playerFromCheckpoint } from './checkpoint.ts';
 import { GreedyPlayer } from './greedy.ts';
 import { MctsPlayer } from './mcts.ts';
 import type { AiPlayer } from './player.ts';
@@ -27,17 +27,22 @@ export function parsePlayerSpec(spec: string): PlayerSpec {
   const options = new Map<string, string>();
   for (const part of rest) {
     const [k, v] = part.split('=', 2);
-    if (v === undefined) throw new Error(`invalid player option ${JSON.stringify(part)} in ${spec}`);
+    if (v === undefined)
+      throw new Error(
+        `invalid player option ${JSON.stringify(part)} in ${spec}`,
+      );
     options.set(k, v);
   }
   const num = (key: string, value: string): number => {
     const x = Number(value);
-    if (!Number.isFinite(x)) throw new Error(`invalid ${key} in player spec ${spec}`);
+    if (!Number.isFinite(x))
+      throw new Error(`invalid ${key} in player spec ${spec}`);
     return x;
   };
   const expect = (allowed: string[]): void => {
     for (const k of options.keys()) {
-      if (!allowed.includes(k)) throw new Error(`unknown option ${k} in player spec ${spec}`);
+      if (!allowed.includes(k))
+        throw new Error(`unknown option ${k} in player spec ${spec}`);
     }
   };
 
@@ -45,25 +50,35 @@ export function parsePlayerSpec(spec: string): PlayerSpec {
     case 'random':
     case 'greedy':
       expect([]);
-      if (arg !== undefined) throw new Error(`${kind} takes no argument (got ${spec})`);
+      if (arg !== undefined)
+        throw new Error(`${kind} takes no argument (got ${spec})`);
       return { kind };
     case 'mcts': {
       expect(['c', 'depth']);
-      if (arg === undefined) throw new Error(`mcts needs iterations, e.g. mcts:1000 (got ${spec})`);
-      const parsed: PlayerSpec = { kind: 'mcts', iterations: num('iterations', arg) };
+      if (arg === undefined)
+        throw new Error(`mcts needs iterations, e.g. mcts:1000 (got ${spec})`);
+      const parsed: PlayerSpec = {
+        kind: 'mcts',
+        iterations: num('iterations', arg),
+      };
       if (options.has('c')) parsed.c = num('c', options.get('c')!);
-      if (options.has('depth')) parsed.playoutDepth = num('depth', options.get('depth')!);
+      if (options.has('depth'))
+        parsed.playoutDepth = num('depth', options.get('depth')!);
       return parsed;
     }
     case 'ckpt': {
       expect(['iters']);
-      if (arg === undefined) throw new Error(`ckpt needs a path, e.g. ckpt:models/gen-000.json`);
+      if (arg === undefined)
+        throw new Error(`ckpt needs a path, e.g. ckpt:models/gen-000.json`);
       const parsed: PlayerSpec = { kind: 'ckpt', path: arg };
-      if (options.has('iters')) parsed.iterations = num('iters', options.get('iters')!);
+      if (options.has('iters'))
+        parsed.iterations = num('iters', options.get('iters')!);
       return parsed;
     }
     default:
-      throw new Error(`unknown player kind ${JSON.stringify(kind)} (expected random|greedy|mcts|ckpt)`);
+      throw new Error(
+        `unknown player kind ${JSON.stringify(kind)} (expected random|greedy|mcts|ckpt)`,
+      );
   }
 }
 

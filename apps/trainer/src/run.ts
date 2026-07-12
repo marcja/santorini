@@ -1,6 +1,11 @@
+import { type AiPlayer, resolveTurn } from '@santorini/ai';
 import type { Player } from '@santorini/engine';
-import { createInitialState, formatSGN, formatTurn, legalTurns } from '@santorini/engine';
-import { resolveTurn, type AiPlayer } from '@santorini/ai';
+import {
+  createInitialState,
+  formatSGN,
+  formatTurn,
+  legalTurns,
+} from '@santorini/engine';
 
 export interface RunConfig {
   games: number;
@@ -71,8 +76,14 @@ export function runMatch(
 }
 
 /** Format one logged game as an SGN document. */
-export function gameToSgn(game: GameLog, nameA: string, nameB: string, event: string): string {
-  const players: [string, string] = game.aSeat === 0 ? [nameA, nameB] : [nameB, nameA];
+export function gameToSgn(
+  game: GameLog,
+  nameA: string,
+  nameB: string,
+  event: string,
+): string {
+  const players: [string, string] =
+    game.aSeat === 0 ? [nameA, nameB] : [nameB, nameA];
   const result = game.winner === null ? '*' : game.winner === 0 ? '1-0' : '0-1';
   return formatSGN(
     { Event: event, Player1: players[0], Player2: players[1], Result: result },

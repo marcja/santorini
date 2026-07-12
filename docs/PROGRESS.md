@@ -287,6 +287,19 @@ _Last updated: 2026-07-12 (session 12)_
   blocking (CI gate + PostToolUse format hook + git pre-commit), PR4 enables
   `no-excessive-cognitive-complexity` in warn mode, PR5 fixes what it flags,
   PR6 flips complexity to blocking.
+- **(issue #3, PR2/6) Biome format/lint cleanup — 0 warnings.** All findings
+  from PR1 fixed: line-wrap formatting + import ordering across all four
+  packages (mechanical, no behavior change — verified by diff review, full
+  test suite, typecheck, and engine bench; web app also booted clean in the
+  in-app browser with no console errors). Three rules disabled repo-wide as
+  not fitting this codebase's idioms rather than rewritten away:
+  `noNonNullAssertion` (used throughout deliberately), `noAssignInExpressions`
+  (the `x ??= f()` memoization pattern), `useIterableCallbackReturn` (forEach
+  used for side effects). Two `noUnusedPrivateClassMembers` findings in
+  `mlp.ts`/`pvnet.ts` were false positives (Biome doesn't trace destructuring
+  reads) — suppressed inline, not deleted. One CSS specificity warning in
+  `style.css` suppressed inline (intentional, order-independent given
+  specificity).
 
 ## Next
 

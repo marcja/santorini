@@ -1,6 +1,6 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { validateCheckpoint, type Checkpoint } from '@santorini/ai';
+import { type Checkpoint, validateCheckpoint } from '@santorini/ai';
 import type { PairResult } from './elo.ts';
 
 export const BASELINES_FORMAT = 'santorini-baselines@1';
@@ -22,13 +22,15 @@ export function readCheckpoint(path: string): Checkpoint {
 
 export function writeJson(path: string, data: unknown): void {
   mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, JSON.stringify(data, null, 2) + '\n');
+  writeFileSync(path, `${JSON.stringify(data, null, 2)}\n`);
 }
 
 export function readBaselines(path: string): Baselines {
   const b = JSON.parse(readFileSync(path, 'utf8')) as Baselines;
   if (b?.format !== BASELINES_FORMAT) {
-    throw new Error(`invalid baselines file ${path}: format ${JSON.stringify(b?.format)}`);
+    throw new Error(
+      `invalid baselines file ${path}: format ${JSON.stringify(b?.format)}`,
+    );
   }
   return b;
 }

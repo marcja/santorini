@@ -1,7 +1,13 @@
 import { CELLS, NEIGHBORS, pushSquare } from './board.ts';
 import { GODS } from './gods/index.ts';
 import { occupancy, ownerOf } from './state.ts';
-import type { BuildAction, GameState, MoveTurn, PlaceTurn, Turn } from './types.ts';
+import type {
+  BuildAction,
+  GameState,
+  MoveTurn,
+  PlaceTurn,
+  Turn,
+} from './types.ts';
 
 /**
  * All legal complete turns for the player to move. A "turn" is atomic:
@@ -45,7 +51,8 @@ function moveTurns(state: GameState): MoveTurn[] {
   const turns: MoveTurn[] = [];
 
   const isWinStep = (from: number, to: number): boolean =>
-    (h[from] < 3 && h[to] === 3) || (!!cfg.winOnDescend2 && h[from] - h[to] >= 2);
+    (h[from] < 3 && h[to] === 3) ||
+    (!!cfg.winOnDescend2 && h[from] - h[to] >= 2);
 
   /**
    * Can the mover step from->to? Returns false if illegal; otherwise the
@@ -92,7 +99,11 @@ function moveTurns(state: GameState): MoveTurn[] {
     } else if (cfg.extraBuild === 'sameSquare') {
       // Hephaestus: optional second block (not dome) on the first space.
       for (const t of targets) {
-        if (h[t] <= 1) combos.push([{ at: t, dome: false }, { at: t, dome: false }]);
+        if (h[t] <= 1)
+          combos.push([
+            { at: t, dome: false },
+            { at: t, dome: false },
+          ]);
       }
     }
     return combos;
@@ -111,7 +122,11 @@ function moveTurns(state: GameState): MoveTurn[] {
   };
 
   /** Explore all turns for one worker (optionally after Prometheus pre-builds). */
-  const tryMovesFrom = (worker: 0 | 1, preBuilds: BuildAction[] | undefined, noUp: boolean) => {
+  const tryMovesFrom = (
+    worker: 0 | 1,
+    preBuilds: BuildAction[] | undefined,
+    noUp: boolean,
+  ) => {
     const wi = p * 2 + worker;
     const from = state.workers[wi];
     for (const to of NEIGHBORS[from]) {
@@ -127,7 +142,8 @@ function moveTurns(state: GameState): MoveTurn[] {
       if (isWinStep(from, to)) {
         emit(worker, [from, to], [], true, preBuilds);
       } else {
-        for (const builds of buildCombos(to)) emit(worker, [from, to], builds, false, preBuilds);
+        for (const builds of buildCombos(to))
+          emit(worker, [from, to], builds, false, preBuilds);
         if (cfg.extraMoveStep && !preBuilds) {
           // Artemis: one additional move, not back to the initial space.
           for (const to2 of NEIGHBORS[to]) {
@@ -138,7 +154,8 @@ function moveTurns(state: GameState): MoveTurn[] {
             if (isWinStep(to, to2)) {
               emit(worker, [from, to, to2], [], true, undefined);
             } else {
-              for (const builds of buildCombos(to2)) emit(worker, [from, to, to2], builds, false, undefined);
+              for (const builds of buildCombos(to2))
+                emit(worker, [from, to, to2], builds, false, undefined);
             }
             occ[to2] = -1;
             occ[to] = wi;

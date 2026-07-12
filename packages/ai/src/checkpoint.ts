@@ -1,9 +1,15 @@
-import { DEFAULT_EVAL_WEIGHTS, EVAL_SCALE, evaluate, type EvalFn, type EvalWeights } from './eval.ts';
+import {
+  DEFAULT_EVAL_WEIGHTS,
+  EVAL_SCALE,
+  type EvalFn,
+  type EvalWeights,
+  evaluate,
+} from './eval.ts';
 import { encodeFeatures, FEATURE_COUNT } from './features.ts';
-import { Mlp, type MlpParams } from './mlp.ts';
 import { MctsPlayer } from './mcts.ts';
+import { Mlp, type MlpParams } from './mlp.ts';
 import type { AiPlayer } from './player.ts';
-import { ACTION_COUNT, policyPriors, type PolicyFn } from './policy.ts';
+import { ACTION_COUNT, type PolicyFn, policyPriors } from './policy.ts';
 import { PolicyValueNet, type PvNetParams } from './pvnet.ts';
 
 // Versioned model artifact stored as JSON in `models/`. Pure data + pure
@@ -56,7 +62,11 @@ export interface Checkpoint {
   notes?: string;
 }
 
-export const DEFAULT_SEARCH: SearchConfig = { iterations: 1000, c: 1.0, playoutDepth: 8 };
+export const DEFAULT_SEARCH: SearchConfig = {
+  iterations: 1000,
+  c: 1.0,
+  playoutDepth: 8,
+};
 
 export interface CheckpointInit {
   generation?: number;
@@ -70,13 +80,19 @@ export interface CheckpointInit {
 }
 
 /** `createdAt` is injected (ISO string) to keep this module clock-free. */
-export function createCheckpoint(createdAt: string, init: CheckpointInit = {}): Checkpoint {
+export function createCheckpoint(
+  createdAt: string,
+  init: CheckpointInit = {},
+): Checkpoint {
   const ckpt: Checkpoint = {
     format: CHECKPOINT_FORMAT,
     generation: init.generation ?? 0,
     createdAt,
     parent: init.parent ?? null,
-    eval: init.eval ?? { type: 'static@1', weights: init.weights ?? DEFAULT_EVAL_WEIGHTS },
+    eval: init.eval ?? {
+      type: 'static@1',
+      weights: init.weights ?? DEFAULT_EVAL_WEIGHTS,
+    },
     search: init.search ?? DEFAULT_SEARCH,
     elo: null,
   };
@@ -85,7 +101,11 @@ export function createCheckpoint(createdAt: string, init: CheckpointInit = {}): 
 }
 
 function numberArray(x: unknown, length: number): x is number[] {
-  return Array.isArray(x) && x.length === length && x.every((v) => typeof v === 'number');
+  return (
+    Array.isArray(x) &&
+    x.length === length &&
+    x.every((v) => typeof v === 'number')
+  );
 }
 
 /** Structurally validate parsed JSON; throws with a specific message. */
@@ -95,10 +115,15 @@ export function validateCheckpoint(data: unknown): Checkpoint {
     throw new Error(`invalid checkpoint: ${msg}`);
   };
   if (typeof c !== 'object' || c === null) fail('not an object');
-  if (c.format !== CHECKPOINT_FORMAT) fail(`format is ${JSON.stringify(c.format)}, expected ${CHECKPOINT_FORMAT}`);
-  if (!Number.isInteger(c.generation) || c.generation < 0) fail('generation must be a non-negative integer');
+  if (c.format !== CHECKPOINT_FORMAT)
+    fail(
+      `format is ${JSON.stringify(c.format)}, expected ${CHECKPOINT_FORMAT}`,
+    );
+  if (!Number.isInteger(c.generation) || c.generation < 0)
+    fail('generation must be a non-negative integer');
   if (typeof c.createdAt !== 'string') fail('createdAt must be a string');
-  if (c.parent !== null && typeof c.parent !== 'string') fail('parent must be a string or null');
+  if (c.parent !== null && typeof c.parent !== 'string')
+    fail('parent must be a string or null');
   if (c.eval?.type === 'static@1') {
     const w = c.eval.weights;
     if (
@@ -144,7 +169,9 @@ export function validateCheckpoint(data: unknown): Checkpoint {
       fail('pv@1 params have inconsistent shapes');
     }
   } else {
-    fail(`unknown eval type ${JSON.stringify((c.eval as { type?: unknown } | null)?.type)}`);
+    fail(
+      `unknown eval type ${JSON.stringify((c.eval as { type?: unknown } | null)?.type)}`,
+    );
   }
   const s = c.search;
   if (
@@ -156,7 +183,8 @@ export function validateCheckpoint(data: unknown): Checkpoint {
   ) {
     fail('search must have iterations>=1, c, playoutDepth>=1');
   }
-  if (c.elo !== null && typeof c.elo?.rating !== 'number') fail('elo must be null or a rating record');
+  if (c.elo !== null && typeof c.elo?.rating !== 'number')
+    fail('elo must be null or a rating record');
   return c;
 }
 
@@ -167,8 +195,10 @@ export function checkpointEvalFn(ev: CheckpointEval): EvalFn {
     return (state, me) => evaluate(state, me, weights);
   }
   const buf = new Float32Array(FEATURE_COUNT);
-  const net = ev.type === 'mlp@1' ? new Mlp(ev.params) : new PolicyValueNet(ev.params);
-  const forward = net instanceof Mlp ? net.forward.bind(net) : net.valueForward.bind(net);
+  const net =
+    ev.type === 'mlp@1' ? new Mlp(ev.params) : new PolicyValueNet(ev.params);
+  const forward =
+    net instanceof Mlp ? net.forward.bind(net) : net.valueForward.bind(net);
   return (state, me) => {
     // The net scores the player to move; negate for the other perspective.
     const logit = forward(encodeFeatures(state, buf));
@@ -187,7 +217,10 @@ export function checkpointPolicyFn(ev: CheckpointEval): PolicyFn | null {
   const logits = new Float64Array(ACTION_COUNT);
   return (state, turns) => {
     if (state.phase !== 'play') return null; // placements take no priors
-    return policyPriors(turns, net.policyForward(encodeFeatures(state, buf), logits));
+    return policyPriors(
+      turns,
+      net.policyForward(encodeFeatures(state, buf), logits),
+    );
   };
 }
 
@@ -202,7 +235,10 @@ export interface CheckpointPlayerOptions {
  * Build the playing agent a checkpoint describes: MCTS over its eval —
  * PUCT-guided by its policy head when the checkpoint has one.
  */
-export function playerFromCheckpoint(ckpt: Checkpoint, opts: CheckpointPlayerOptions = {}): AiPlayer {
+export function playerFromCheckpoint(
+  ckpt: Checkpoint,
+  opts: CheckpointPlayerOptions = {},
+): AiPlayer {
   return new MctsPlayer({
     ...ckpt.search,
     iterations: opts.iterations ?? ckpt.search.iterations,

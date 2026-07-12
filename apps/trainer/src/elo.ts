@@ -27,7 +27,10 @@ export interface FitOptions {
  * maximization; draws score half a win each way. One virtual draw is added
  * per played pair so undefeated players get a finite rating.
  */
-export function fitElo(results: PairResult[], opts: FitOptions = {}): Record<string, number> {
+export function fitElo(
+  results: PairResult[],
+  opts: FitOptions = {},
+): Record<string, number> {
   const names: string[] = [];
   const index = new Map<string, number>();
   const idx = (name: string): number => {
@@ -73,7 +76,8 @@ export function fitElo(results: PairResult[], opts: FitOptions = {}): Record<str
   const ratings: Record<string, number> = {};
   for (let i = 0; i < n; i++) ratings[names[i]] = 400 * Math.log10(gamma[i]);
   const anchor = opts.anchor ?? names[0];
-  if (!(anchor in ratings)) throw new Error(`anchor ${anchor} not among rated players`);
+  if (!(anchor in ratings))
+    throw new Error(`anchor ${anchor} not among rated players`);
   const shift = (opts.anchorRating ?? 0) - ratings[anchor];
   for (const name of names) ratings[name] += shift;
   return ratings;
@@ -94,7 +98,8 @@ export interface GauntletLine {
  * One virtual draw per opponent keeps sweeps finite.
  */
 export function performanceRating(lines: GauntletLine[]): number {
-  if (lines.length === 0) throw new Error('performanceRating needs at least one opponent');
+  if (lines.length === 0)
+    throw new Error('performanceRating needs at least one opponent');
   let totalScore = 0;
   const games: { rating: number; n: number }[] = [];
   for (const l of lines) {

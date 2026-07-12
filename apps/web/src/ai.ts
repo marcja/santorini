@@ -1,14 +1,14 @@
 import {
+  type AiPlayer,
+  type Checkpoint,
   checkpointEvalFn,
   checkpointPolicyFn,
+  type EvalFn,
+  type PolicyFn,
   parsePlayerSpec,
   playerFromSpec,
   specName,
   validateCheckpoint,
-  type AiPlayer,
-  type Checkpoint,
-  type EvalFn,
-  type PolicyFn,
 } from '@santorini/ai';
 import gen005 from '../../../models/gen-005.json';
 import gen007 from '../../../models/gen-007.json';
@@ -26,7 +26,8 @@ const CHECKPOINTS: Record<string, unknown> = {
 
 function loadCheckpoint(path: string): Checkpoint {
   const data = CHECKPOINTS[path];
-  if (data === undefined) throw new Error(`checkpoint not bundled with the web app: ${path}`);
+  if (data === undefined)
+    throw new Error(`checkpoint not bundled with the web app: ${path}`);
   return validateCheckpoint(data);
 }
 
@@ -47,7 +48,10 @@ export const COACH_POLICY: PolicyFn | null = checkpointPolicyFn(coachCkpt.eval);
 
 export const AI_LEVELS: AiLevel[] = ladderJson.levels.map((level) => {
   const spec = parsePlayerSpec(level.spec);
-  const label = specName(spec, spec.kind === 'ckpt' ? loadCheckpoint(spec.path) : undefined);
+  const label = specName(
+    spec,
+    spec.kind === 'ckpt' ? loadCheckpoint(spec.path) : undefined,
+  );
   return {
     name: level.name,
     detail: `${label}, Elo ${level.rating}`,

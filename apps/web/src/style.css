@@ -11,7 +11,7 @@
   --build: #f97316;
   --danger: #ef4444;
   --coach: #c084fc;
-  font-family: 'Avenir Next', 'Segoe UI', system-ui, sans-serif;
+  font-family: "Avenir Next", "Segoe UI", system-ui, sans-serif;
 }
 
 * {
@@ -58,8 +58,12 @@ h1 {
   display: inline-block;
 }
 
-.chip.p1 { background: var(--p1); }
-.chip.p2 { background: var(--p2); }
+.chip.p1 {
+  background: var(--p1);
+}
+.chip.p2 {
+  background: var(--p2);
+}
 
 .layout {
   display: flex;
@@ -76,9 +80,15 @@ svg#board {
   touch-action: manipulation;
 }
 
-.cell { cursor: pointer; }
-.cell .tile { transition: filter 0.1s; }
-.cell:hover .tile { filter: brightness(1.06); }
+.cell {
+  cursor: pointer;
+}
+.cell .tile {
+  transition: filter 0.1s;
+}
+.cell:hover .tile {
+  filter: brightness(1.06);
+}
 
 aside {
   flex: 1;
@@ -138,7 +148,9 @@ aside {
   font-size: 14px;
 }
 
-.players label select { margin-left: auto; }
+.players label select {
+  margin-left: auto;
+}
 
 .players select {
   background: var(--ink);
@@ -178,7 +190,7 @@ aside {
   opacity: 0.85;
 }
 
-.ai-delay input[type='range'] {
+.ai-delay input[type="range"] {
   width: 90px;
   accent-color: var(--accent);
 }
@@ -292,8 +304,12 @@ button.god-card strong {
   font-weight: 600;
 }
 
-.coach-win { color: var(--accent); }
-.coach-danger { color: var(--danger); }
+.coach-win {
+  color: var(--accent);
+}
+.coach-danger {
+  color: var(--danger);
+}
 
 #coach-hint {
   align-self: flex-start;
@@ -391,6 +407,7 @@ button.god-card strong {
   display: inline-block;
 }
 
+/* biome-ignore lint/style/noDescendingSpecificity: base button style declared after .ai-row's more-specific override; specificity makes order irrelevant. */
 button {
   background: var(--ink);
   color: var(--sea);
@@ -402,7 +419,9 @@ button {
   cursor: pointer;
 }
 
-button:hover { filter: brightness(0.92); }
+button:hover {
+  filter: brightness(0.92);
+}
 
 button:disabled {
   opacity: 0.35;
@@ -436,7 +455,9 @@ button:disabled {
   padding: 0 2px;
 }
 
-.rec-move:hover { background: rgba(255, 255, 255, 0.12); }
+.rec-move:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
 
 .rec-move.current {
   background: var(--accent);
@@ -445,7 +466,7 @@ button:disabled {
 
 textarea#sgn {
   width: 100%;
-  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
   font-size: 12px;
   line-height: 1.5;
   background: rgba(0, 0, 0, 0.25);
@@ -472,7 +493,7 @@ aside h2 {
 }
 
 pre#record {
-  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
   font-size: 14px;
   line-height: 1.6;
   white-space: pre-wrap;

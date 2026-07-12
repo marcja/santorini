@@ -21,7 +21,7 @@ export function formatTurn(state: GameState, t: Turn): string {
 
 function fmtBuild(scratch: Uint8Array, b: BuildAction): string {
   const explicitDome = b.dome && scratch[b.at] !== 3;
-  const s = '^' + squareName(b.at) + (explicitDome ? 'D' : '');
+  const s = `^${squareName(b.at)}${explicitDome ? 'D' : ''}`;
   scratch[b.at] = b.dome ? 4 : scratch[b.at] + 1;
   return s;
 }
@@ -39,7 +39,10 @@ export function parseTurn(state: GameState, str: string): Turn {
     if (parts.length !== 2) throw new Error(`invalid placement turn: ${str}`);
     return {
       kind: 'place',
-      squares: [parseSquareName(parts[0].trim()), parseSquareName(parts[1].trim())],
+      squares: [
+        parseSquareName(parts[0].trim()),
+        parseSquareName(parts[1].trim()),
+      ],
     };
   }
 
@@ -77,13 +80,22 @@ export function parseTurn(state: GameState, str: string): Turn {
     i++;
   }
   while (s[i] === '!' || s[i] === '?') i++;
-  if (i !== s.length) throw new Error(`unexpected trailing characters in turn: ${str}`);
+  if (i !== s.length)
+    throw new Error(`unexpected trailing characters in turn: ${str}`);
 
   const w = workerAt(state, path[0]);
   if (w < 0 || w >> 1 !== state.player) {
-    throw new Error(`player ${state.player + 1} has no worker on ${squareName(path[0])}`);
+    throw new Error(
+      `player ${state.player + 1} has no worker on ${squareName(path[0])}`,
+    );
   }
-  const turn: MoveTurn = { kind: 'move', worker: (w & 1) as 0 | 1, path, builds, win };
+  const turn: MoveTurn = {
+    kind: 'move',
+    worker: (w & 1) as 0 | 1,
+    path,
+    builds,
+    win,
+  };
   if (preBuilds.length > 0) turn.preBuilds = preBuilds;
   return turn;
 }
@@ -96,7 +108,7 @@ export function parseTurn(state: GameState, str: string): Turn {
  */
 export function turnKey(t: Turn): string {
   if (t.kind === 'place') {
-    return 'P' + [...t.squares].sort((a, b) => a - b).join(',');
+    return `P${[...t.squares].sort((a, b) => a - b).join(',')}`;
   }
   const key = (bs: BuildAction[]): string =>
     bs
@@ -126,11 +138,17 @@ export function parseSGN(text: string): SgnDocument {
   const turns = body
     .split(/\s+/)
     .filter(Boolean)
-    .filter((tok) => !/^\d+\.$/.test(tok) && tok !== '1-0' && tok !== '0-1' && tok !== '*');
+    .filter(
+      (tok) =>
+        !/^\d+\.$/.test(tok) && tok !== '1-0' && tok !== '0-1' && tok !== '*',
+    );
   return { headers, turns };
 }
 
-export function formatSGN(headers: Record<string, string>, turns: string[]): string {
+export function formatSGN(
+  headers: Record<string, string>,
+  turns: string[],
+): string {
   const headerLines = Object.entries(headers).map(([k, v]) => `[${k} "${v}"]`);
   const tokens: string[] = [];
   for (let i = 0; i < turns.length; i += 2) {
@@ -144,9 +162,14 @@ export function formatSGN(headers: Record<string, string>, turns: string[]): str
       lines.push(line);
       line = tok;
     } else {
-      line = line === '' ? tok : line + ' ' + tok;
+      line = line === '' ? tok : `${line} ${tok}`;
     }
   }
   if (line !== '') lines.push(line);
-  return headerLines.join('\n') + (headerLines.length ? '\n\n' : '') + lines.join('\n') + '\n';
+  return (
+    headerLines.join('\n') +
+    (headerLines.length ? '\n\n' : '') +
+    lines.join('\n') +
+    '\n'
+  );
 }
