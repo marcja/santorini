@@ -58,11 +58,11 @@ Separate offline app; the AI teaches itself via adversarial self-play.
       `calibrate`/`gauntlet`/`train`) with Bradley–Terry-calibrated baselines
       (random=0, mcts(200)=657, greedy=808, mcts(1000)=923) and SGN game
       dumps (self-play dumps replay-verified).
-- [ ] Explainability channel: the AI must not just pick moves — it exposes
+- [x] Explainability channel: the AI must not just pick moves — it exposes
       search statistics (visit counts, value estimates, principal variation,
       threats found) that the coach layer turns into human explanations.
-      (Started: `search()` already returns visits/values/PV; threat
-      extraction and narration pending.)
+      (`search()` returns visits/values/PV; `coach.ts` adds threat
+      extraction, post-move review, and narration — slice 4a, 2026-07-11.)
 - [x] Strength ladder: frozen checkpoints at increasing strength = difficulty
       levels. `models/ladder.json` (`santorini-ladder@1`): Beginner=random(0),
       Easy=mcts:200(657), Medium=greedy(808), Hard=ckpt:gen-005(841; strongest
@@ -97,8 +97,13 @@ Separate offline app; the AI teaches itself via adversarial self-play.
       `@santorini/ai` and shared. Verified through the in-app browser
       (2026-07-11): human-vs-Hard, AI-vs-AI base and god games to the win
       banner; Hard ≈200–300 ms/move in-browser (no worker needed yet).
-- [ ] Slice 4: coach — explains goals/plans/threats/countermoves, not just best
-      moves; beginner/intermediate/advanced lesson content.
+- [x] Slice 4a: coach v1 — win/threat squares ringed on the board each turn,
+      on-demand narrated hint (search-backed suggestion, win chances, PV,
+      candidates), post-move feedback on human plays (missed win, avoidable
+      hang, block credit, created threat); verified through the in-app
+      browser (2026-07-11).
+- [ ] Slice 4b: beginner/intermediate/advanced lesson content; richer plan
+      narration beyond one-ply facts + PV.
 
 ## Non-functional requirements
 
