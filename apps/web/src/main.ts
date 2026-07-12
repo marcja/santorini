@@ -29,7 +29,7 @@ import {
   type Lesson,
   type LessonLevel,
 } from '@santorini/ai';
-import { AI_LEVELS, COACH_EVAL } from './ai.ts';
+import { AI_LEVELS, COACH_EVAL, COACH_POLICY } from './ai.ts';
 import './style.css';
 
 // Pass-and-play with god powers. Engine player 0 always moves first; which
@@ -219,7 +219,12 @@ coachBodyEl.addEventListener('click', (e) => {
   if (!(e.target as Element).closest('#coach-hint')) return;
   const s = viewState();
   if (s.phase === 'over') return;
-  hint = coachHint(s, { iterations: 1000, seed: viewPos() + 1, evaluate: COACH_EVAL });
+  hint = coachHint(s, {
+    iterations: 1000,
+    seed: viewPos() + 1,
+    evaluate: COACH_EVAL,
+    ...(COACH_POLICY ? { policy: COACH_POLICY } : {}),
+  });
   hintKey = coachKey();
   render();
 });

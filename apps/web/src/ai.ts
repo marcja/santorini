@@ -1,5 +1,6 @@
 import {
   checkpointEvalFn,
+  checkpointPolicyFn,
   parsePlayerSpec,
   playerFromSpec,
   specName,
@@ -7,8 +8,10 @@ import {
   type AiPlayer,
   type Checkpoint,
   type EvalFn,
+  type PolicyFn,
 } from '@santorini/ai';
 import gen005 from '../../../models/gen-005.json';
+import gen007 from '../../../models/gen-007.json';
 import ladderJson from '../../../models/ladder.json';
 
 // The frozen difficulty ladder (models/ladder.json) drives the opponent
@@ -18,6 +21,7 @@ import ladderJson from '../../../models/ladder.json';
 
 const CHECKPOINTS: Record<string, unknown> = {
   'models/gen-005.json': gen005,
+  'models/gen-007.json': gen007,
 };
 
 function loadCheckpoint(path: string): Checkpoint {
@@ -27,7 +31,7 @@ function loadCheckpoint(path: string): Checkpoint {
 }
 
 export interface AiLevel {
-  /** Ladder rung name: Beginner / Easy / Medium / Hard. */
+  /** Ladder rung name: Beginner / Easy / Medium / Hard / Expert. */
   name: string;
   /** Underlying player + calibrated Elo, e.g. "gen-5, Elo 841". */
   detail: string;
@@ -35,8 +39,11 @@ export interface AiLevel {
   make(seed: number): AiPlayer;
 }
 
-/** Strongest bundled evaluation — powers the coach's hint search. */
-export const COACH_EVAL: EvalFn = checkpointEvalFn(validateCheckpoint(gen005).eval);
+// Strongest bundled checkpoint (gen-007, pv@1) powers the coach's hint
+// search: its value head evaluates, its policy head steers the search (PUCT).
+const coachCkpt = validateCheckpoint(gen007);
+export const COACH_EVAL: EvalFn = checkpointEvalFn(coachCkpt.eval);
+export const COACH_POLICY: PolicyFn | null = checkpointPolicyFn(coachCkpt.eval);
 
 export const AI_LEVELS: AiLevel[] = ladderJson.levels.map((level) => {
   const spec = parsePlayerSpec(level.spec);

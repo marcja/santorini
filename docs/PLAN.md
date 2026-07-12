@@ -42,16 +42,16 @@ Separate offline app; the AI teaches itself via adversarial self-play.
       plugged into MCTS via `EvalFn`; trainer `train` command runs the
       parent → self-play → train → child loop. gen-001 is at parity with
       the hand eval (gauntlet 793 vs 817; 15–9 head-to-head).
-- [ ] Learned evaluation v2: iterate generations until the gauntlet trend
-      rises; then policy priors (PUCT), regularization, and GPU/WebGPU or
-      ONNX only if pure TS becomes the bottleneck. (Progress: gen-002 hit
-      the plateau; 8-symmetry augmentation broke it — gen-002-aug beat
-      gen-001 19–5 — and is now the default recipe. **Bounded push done
-      2026-07-11**: gen-004/005 trained on the existing recipe; neither
-      cleared 65% vs mcts(1000), but head-to-heads rose monotonically —
-      gen-005 beat gen-003 17–7 (+154 Elo). Ladder frozen, training
-      paused. Remaining scope — PUCT priors, more games/gen,
-      regularization — resumes after web slices 2–3.)
+- [x] Learned evaluation v2: PUCT policy priors + more games/gen +
+      regularization (2026-07-12). `pv@1` two-headed net (shared hidden,
+      value + policy over a 225-way full-turn action encoding), PUCT
+      search when a checkpoint has a policy head, self-play visit-
+      distribution targets (8-symmetry aware), L2 weight decay, trainer
+      `--pv`/`--wd`. gen-006 (UCT self-play data) gauntleted 1001;
+      gen-007 (first PUCT self-play, 800 games) gauntleted 1132 and beat
+      gen-005 23–1 — two consecutive +232-Elo head-to-head jumps. Loop
+      still rising; further gens are one command each. GPU/WebGPU/ONNX
+      still unneeded (pure TS trains a gen in ~15 min).
 - [x] Checkpoint format + rating harness: versioned JSON artifacts
       (`santorini-checkpoint@1`: generation, parent, eval weights, search
       config, Elo record) in `models/`; trainer CLI (`init`/`match`/
@@ -65,9 +65,10 @@ Separate offline app; the AI teaches itself via adversarial self-play.
       extraction, post-move review, and narration — slice 4a, 2026-07-11.)
 - [x] Strength ladder: frozen checkpoints at increasing strength = difficulty
       levels. `models/ladder.json` (`santorini-ladder@1`): Beginner=random(0),
-      Easy=mcts:200(657), Medium=greedy(808), Hard=ckpt:gen-005(841; strongest
-      by head-to-head). New rungs may be appended after the post-web
-      training return.
+      Easy=mcts:200(657), Medium=greedy(808), Hard=ckpt:gen-005(841),
+      Expert=ckpt:gen-007(1132; appended 2026-07-12 — pv@1, PUCT search,
+      bundled into the web picker; the coach's hint search also upgraded
+      to gen-007's value+policy heads).
 
 ## Deliverable 3 — Web game (`apps/web`)
 
