@@ -115,6 +115,71 @@ aside {
   font-weight: 600;
 }
 
+.setup .chip {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.draft-title {
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.draft-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.god-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+}
+
+.god-grid button {
+  padding: 6px 8px;
+  font-size: 13px;
+}
+
+.god-grid button.selected {
+  background: var(--accent);
+  color: #052e16;
+}
+
+button.god-card {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font-weight: 400;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+button.god-card strong {
+  font-size: 14px;
+}
+
+.free-pick {
+  font-size: 13px;
+  opacity: 0.85;
+}
+
+.free-pick summary {
+  cursor: pointer;
+  margin-bottom: 6px;
+}
+
+.free-pick label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
 #choice {
   display: flex;
   flex-direction: column;

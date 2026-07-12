@@ -1,6 +1,6 @@
 # Progress
 
-_Last updated: 2026-07-11 (session 8)_
+_Last updated: 2026-07-11 (session 9)_
 
 ## Done
 
@@ -148,6 +148,24 @@ _Last updated: 2026-07-11 (session 8)_
   round trip, invalid-SGN error path. No engine changes (`Game.fromSGN`/
   `stateAt`/`toSGN` already existed).
 
+- **God draft per rulebook (this session, issue #7).** `apps/web` only. The
+  free-pick dropdowns are replaced by a draft wizard in the sidebar (rulebook
+  p.2 "God Power Setup"): pick the Challenger → the Challenger offers two
+  *unique* gods (toggle grid, Offer disabled until exactly 2) → the opponent
+  takes one (full god text shown), the Challenger gets the other → the
+  Challenger chooses the Start Player. The Start Player takes engine seat 0;
+  a `seatColor` map (seat → Blue/Amber) now drives every color-dependent
+  render (workers, chips, names, god cards), since Blue is no longer always
+  first. SGN export puts the seat-0 god in `God1`; SGN load resets colors to
+  Blue-first (records carry no color info). "No gods (base game)" starts
+  immediately; the old free pick (any gods, duplicates allowed, Start Player
+  select) survives as a collapsed dev shortcut. Verified in the in-app
+  browser: full draft with Amber as Challenger + Amber starting (amber
+  workers placed first, `1. b2,c2 b4,c4`, Apollo turn `2. c2-c3^d3`, undo,
+  export headers `God1 "Apollo"`), free-pick with Amber start, SGN load
+  color reset, Cancel, base game. Mistake-log reminder held: coordinate
+  clicks drifted (screenshot scale ≠ viewport), a11y-ref clicks didn't.
+
 ## Next
 
 **Sequencing decision (2026-07-11):** cap AI training at a bounded
@@ -164,7 +182,8 @@ rungs (random 0 / mcts(200) 657 / greedy 808 / gen-003 903).
    remain deferred to the post-web return.
 3. ~~Web slice 2: god-power selection UI + generic multi-step turn input~~ —
    done (see Done above). ~~Slice 2b: replay/analysis view~~ — done (see Done
-   above). Remaining slice-2 scope: god draft per rulebook (issue #7).
+   above). ~~God draft per rulebook (issue #7)~~ — done (see Done above);
+   slice 2 is complete.
 4. Web slice 3: vs-AI play — engine+ai are pure TS, so `MctsPlayer` runs
    in-browser as-is (load `models/gen-XXX.json` via `playerFromCheckpoint`);
    AI-vs-AI at controllable rate; then coach layer.
