@@ -79,6 +79,10 @@ Separate offline app; the AI teaches itself via adversarial self-play.
       domes) — partial turns prefix-matched against `legalTurns()`, chooser
       for ambiguous squares, "Finish turn" for optional extras; verified by
       playing god games through the in-app browser (2026-07-11).
+- [ ] God draft per rulebook (issue #7): Challenger picks two unique gods,
+      opponent takes one, Challenger gets the other and chooses the Start
+      Player. Current free-pick dropdowns are a stand-in; in-game god
+      behavior is unaffected.
 - [ ] Slice 2b: replay/analysis view (step through a finished game / load an
       SGN record).
 - [ ] Slice 3: vs-AI using a persisted model artifact; AI-vs-AI at controllable rate.

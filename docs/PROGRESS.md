@@ -117,6 +117,11 @@ _Last updated: 2026-07-11 (session 7)_
   (`d4-d5^e5D`), undo mid-game. Board cells now have `role="button"` +
   aria-labels (the chooser/Finish buttons are click-targetable via the
   accessibility tree; SVG cells still need coordinates).
+  **Known gap (issue #7):** god *selection* doesn't follow the rulebook's
+  draft — the Challenger picks two unique gods, the opponent takes one, the
+  Challenger gets the other and chooses the Start Player. Current free-pick
+  dropdowns (same god allowed, Blue always starts) are a stand-in; in-game
+  god behavior is unaffected.
 
 ## Next
 
