@@ -89,7 +89,14 @@ Separate offline app; the AI teaches itself via adversarial self-play.
       board, load a pasted SGN record, export the current game as SGN;
       verified by replaying a 49-turn Artemis/Atlas game and resuming live
       play through the in-app browser (2026-07-11).
-- [ ] Slice 3: vs-AI using a persisted model artifact; AI-vs-AI at controllable rate.
+- [x] Slice 3: vs-AI using a persisted model artifact; AI-vs-AI at
+      controllable rate. Per-color Human/AI seat picker over the frozen
+      `models/ladder.json` rungs (Hard = bundled gen-005 checkpoint), AI
+      driver with delay slider + Pause/Resume, AI-aware undo, replay view
+      halts the AI. Player-spec parsing lifted from the trainer into
+      `@santorini/ai` and shared. Verified through the in-app browser
+      (2026-07-11): human-vs-Hard, AI-vs-AI base and god games to the win
+      banner; Hard ≈200–300 ms/move in-browser (no worker needed yet).
 - [ ] Slice 4: coach — explains goals/plans/threats/countermoves, not just best
       moves; beginner/intermediate/advanced lesson content.
 

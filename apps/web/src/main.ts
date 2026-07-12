@@ -13,6 +13,8 @@ import {
   type MoveTurn,
   type Square,
 } from '@santorini/engine';
+import type { AiPlayer } from '@santorini/ai';
+import { AI_LEVELS } from './ai.ts';
 import './style.css';
 
 // Pass-and-play with god powers. Engine player 0 always moves first; which
@@ -47,6 +49,19 @@ interface Step {
 const COLOR_NAME = ['Blue', 'Amber'];
 let seatColor: [number, number] = [0, 1];
 const colorOf = (seat: number): number => seatColor[seat];
+
+// Seat control: who plays each COLOR — 'human' or an AI_LEVELS index
+// (models/ladder.json rungs, Hard = the gen-005 checkpoint). Switchable at
+// any time, including mid-game; two AI seats give AI-vs-AI at the rate set
+// by `aiDelay`. AI instances are built lazily (they carry RNG state) and
+// act from a timer so the board paints before the synchronous search runs.
+type Controller = 'human' | number;
+let controllers: [Controller, Controller] = ['human', 'human'];
+let aiPlayers: [AiPlayer | null, AiPlayer | null] = [null, null];
+let aiPaused = false;
+let aiDelay = 500; // ms between AI turns — the AI-vs-AI rate control
+let aiTimer: number | null = null;
+const newSeed = (): number => Math.floor(Math.random() * 0x7fffffff);
 
 // God-draft wizard state (null = no draft in progress). Colors, not seats:
 // seats don't exist until the Start Player is chosen at the end.
@@ -85,6 +100,19 @@ app.innerHTML = `
           <button id="undo">Undo</button>
           <button id="finish" hidden>Finish turn</button>
           <button id="cancel" hidden>Cancel</button>
+        </div>
+        <h2>Players</h2>
+        <div class="players">
+          <label><span class="chip p1"></span> Blue <select id="ctl-0" aria-label="Blue player"></select></label>
+          <label><span class="chip p2"></span> Amber <select id="ctl-1" aria-label="Amber player"></select></label>
+          <div class="ai-row">
+            <button id="ai-pause">Pause AI</button>
+            <label class="ai-delay">Delay
+              <input id="ai-delay" type="range" min="0" max="2000" step="100" value="500"
+                aria-label="AI move delay">
+              <span id="ai-delay-val">0.5s</span>
+            </label>
+          </div>
         </div>
         <div id="choice"></div>
         <div id="gods"></div>
@@ -126,13 +154,82 @@ const revEndEl = document.querySelector<HTMLButtonElement>('#rev-end')!;
 const replayPosEl = document.querySelector<HTMLSpanElement>('#replay-pos')!;
 const sgnEl = document.querySelector<HTMLTextAreaElement>('#sgn')!;
 const sgnMsgEl = document.querySelector<HTMLDivElement>('#sgn-msg')!;
+const ctlEls = [0, 1].map((c) => document.querySelector<HTMLSelectElement>(`#ctl-${c}`)!);
+const aiPauseEl = document.querySelector<HTMLButtonElement>('#ai-pause')!;
+const aiDelayEl = document.querySelector<HTMLInputElement>('#ai-delay')!;
+const aiDelayValEl = document.querySelector<HTMLSpanElement>('#ai-delay-val')!;
+
+// --- AI seats ---
+
+const anyAiSeat = (): boolean => controllers.some((c) => c !== 'human');
+/** Controller of the color whose turn it is. */
+const controllerToMove = (): Controller => controllers[colorOf(game.state.player)];
+/** True when the live game is waiting on an AI turn (paused or not). */
+const aiToMove = (): boolean =>
+  view === null && game.state.phase !== 'over' && controllerToMove() !== 'human';
+
+function cancelAi(): void {
+  if (aiTimer !== null) {
+    clearTimeout(aiTimer);
+    aiTimer = null;
+  }
+}
+
+/**
+ * (Re)arm the AI timer if the game is waiting on an AI turn. Runs after
+ * every render, so any state change reschedules against fresh state; the
+ * timer re-checks before acting in case the user intervened meanwhile.
+ */
+function scheduleAi(): void {
+  cancelAi();
+  if (aiPaused || !aiToMove()) return;
+  aiTimer = window.setTimeout(() => {
+    aiTimer = null;
+    if (aiPaused || !aiToMove()) return;
+    const color = colorOf(game.state.player);
+    const level = controllers[color] as number;
+    const player = (aiPlayers[color] ??= AI_LEVELS[level].make(newSeed()));
+    game.play(player.chooseTurn(game.state));
+    resetSelection();
+    render();
+  }, Math.max(aiDelay, 30)); // floor: let the board paint between AI turns
+}
+
+for (const [c, sel] of ctlEls.entries()) {
+  sel.innerHTML =
+    '<option value="human">Human</option>' +
+    AI_LEVELS.map((l, i) => `<option value="${i}">AI: ${l.name} (${l.detail})</option>`).join('');
+  sel.addEventListener('change', () => {
+    controllers[c] = sel.value === 'human' ? 'human' : Number(sel.value);
+    aiPlayers[c] = null; // rebuild on next turn
+    if (aiToMove()) resetSelection(); // drop any half-entered human turn
+    render();
+  });
+}
+aiPauseEl.addEventListener('click', () => {
+  aiPaused = !aiPaused;
+  render();
+});
+aiDelayEl.addEventListener('input', () => {
+  aiDelay = Number(aiDelayEl.value);
+  aiDelayValEl.textContent = `${aiDelay / 1000}s`;
+});
 
 document.querySelector('#new')!.addEventListener('click', () => {
   draft = { stage: 'challenger' };
   renderSetup();
 });
 undoEl.addEventListener('click', () => {
-  game.undo();
+  // Vs an AI, undo backs up to the human's previous decision point; in
+  // AI-vs-AI, undo one turn and pause so the position can be inspected.
+  if (anyAiSeat() && !controllers.includes('human')) aiPaused = true;
+  do {
+    game.undo();
+  } while (
+    game.turns.length > 0 &&
+    controllers.includes('human') &&
+    controllerToMove() !== 'human'
+  );
   resetSelection();
   render();
 });
@@ -168,6 +265,8 @@ function startGame(godOf: [GodId, GodId], startColor: number): void {
   game = new Game({ gods: [godOf[startColor], godOf[1 - startColor]] });
   draft = null;
   view = null;
+  aiPlayers = [null, null]; // fresh AI seeds per game
+  aiPaused = false;
   sgnMsgEl.textContent = '';
   resetSelection();
   renderSetup();
@@ -430,6 +529,7 @@ function applyStep(s: Step): void {
 
 function onCellClick(sq: Square): void {
   if (view !== null) return; // replay is view-only
+  if (aiToMove()) return; // the AI seat's turn — humans can't move for it
   const s = game.state;
   if (s.phase === 'over') return;
   choice = null;
@@ -540,8 +640,11 @@ function render(): void {
   replayPosEl.textContent = `${viewPos()}/${game.turns.length}`;
   choiceEl.innerHTML = choiceHtml();
   godsEl.innerHTML = godsHtml();
+  aiPauseEl.disabled = !anyAiSeat();
+  aiPauseEl.textContent = aiPaused ? 'Resume AI' : 'Pause AI';
   statusEl.innerHTML = view === null ? statusText(steps, finish) : replayStatus(s);
   recordEl.innerHTML = recordHtml();
+  scheduleAi();
 }
 
 function stepLabel(st: Step): string {
@@ -581,6 +684,11 @@ function statusText(steps: Step[], finish: MoveTurn | null): string {
   if (s.phase === 'over') {
     const w = s.winner!;
     return `<span class="chip p${colorOf(w) + 1}"></span> <strong>${playerLabel(w)} wins!</strong>`;
+  }
+  if (controllerToMove() !== 'human') {
+    const level = AI_LEVELS[controllerToMove() as number];
+    const doing = s.phase === 'setup' ? 'placing workers' : 'thinking';
+    return `${chip} ${playerLabel(s.player)} — ${level.name} AI ${aiPaused ? 'paused' : `${doing}…`}`;
   }
   if (s.phase === 'setup') {
     const n = pendingPlace === null ? 1 : 2;

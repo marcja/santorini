@@ -1,14 +1,16 @@
-import {
-  GreedyPlayer,
-  MctsPlayer,
-  RandomPlayer,
-  playerFromCheckpoint,
-  type AiPlayer,
-  type Checkpoint,
-} from '@santorini/ai';
+import { playerFromCheckpoint, type Checkpoint } from './checkpoint.ts';
+import { GreedyPlayer } from './greedy.ts';
+import { MctsPlayer } from './mcts.ts';
+import type { AiPlayer } from './player.ts';
+import { RandomPlayer } from './random.ts';
+
+// Textual player specs — the shared grammar used by the trainer CLI, the
+// frozen ladder (models/ladder.json), and the web app's opponent picker.
+// Checkpoint I/O stays injected: callers resolve ckpt paths themselves
+// (fs in the trainer, bundled JSON in the browser).
 
 /**
- * Parsed CLI player spec. Grammar:
+ * Parsed player spec. Grammar:
  *   random | greedy
  *   mcts:ITERATIONS[,c=FLOAT][,depth=INT]
  *   ckpt:PATH[,iters=INT]
@@ -81,9 +83,10 @@ export function specName(spec: PlayerSpec, ckpt?: Checkpoint): string {
 /**
  * Build a fresh player for one game. Players carry RNG state, so callers
  * construct a new one per game with a per-game seed for reproducibility.
- * `loadCheckpoint` resolves ckpt specs (the CLI passes an fs-backed loader).
+ * `loadCheckpoint` resolves ckpt specs (fs-backed in the trainer CLI,
+ * bundled-JSON-backed in the web app).
  */
-export function makePlayer(
+export function playerFromSpec(
   spec: PlayerSpec,
   seed: number,
   loadCheckpoint: (path: string) => Checkpoint,

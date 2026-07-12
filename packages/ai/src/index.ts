@@ -18,6 +18,7 @@ export {
   type OpponentRecord,
   type SearchConfig,
 } from './checkpoint.ts';
+export { parsePlayerSpec, playerFromSpec, specName, type PlayerSpec } from './spec.ts';
 export {
   selfPlay,
   type SelfPlayConfig,
