@@ -312,6 +312,16 @@ _Last updated: 2026-07-12 (session 12)_
   clones that skip the install step rely on CI as the backstop — both
   paths tested with a deliberate violation). Cognitive-complexity remains
   deferred to PR4.
+- **(issue #3, PR4/6) Cognitive-complexity enabled, warn-only.**
+  `no-excessive-cognitive-complexity` at `warn`, max 15 repo-wide, `packages/
+  engine` overridden to 10 (rules-critical code held to a tighter bar).
+  23 current findings, by package: engine 8 (movegen.ts 4, notation.ts 2,
+  apply.ts 1, board.ts 1), ai 7 (one each in checkpoint/coach/mcts/mlp/
+  pvnet/selfplay/spec), web 5 (all in main.ts), trainer 3 (cli/elo/run.ts).
+  Density looked reasonable everywhere (no package flooded), so no looser
+  override for ai/trainer. Confirmed Biome's own warn-vs-error exit codes
+  keep CI green at this stage — no need to split lint into two CI lanes.
+  No source files touched. PR5 fixes these; PR6 flips to blocking.
 
 ## Next
 
