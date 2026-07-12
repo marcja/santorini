@@ -22,6 +22,7 @@ export { parsePlayerSpec, playerFromSpec, specName, type PlayerSpec } from './sp
 export {
   coachHint,
   describeTurn,
+  forcedLoss,
   reviewLines,
   reviewTurn,
   threatSquares,
@@ -30,6 +31,17 @@ export {
   type CoachOptions,
   type TurnReview,
 } from './coach.ts';
+export {
+  LESSONS,
+  checkExercise,
+  lessonState,
+  type Exercise,
+  type ExerciseGoal,
+  type ExerciseResult,
+  type Lesson,
+  type LessonLevel,
+  type LessonPosition,
+} from './lessons.ts';
 export {
   selfPlay,
   type SelfPlayConfig,

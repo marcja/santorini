@@ -1,8 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { createInitialState, parseTurn, squareName, parseSquareName } from '@santorini/engine';
+import {
+  createInitialState,
+  legalTurns,
+  parseTurn,
+  squareName,
+  parseSquareName,
+} from '@santorini/engine';
 import {
   coachHint,
   describeTurn,
+  forcedLoss,
+  resolveTurn,
   reviewLines,
   reviewTurn,
   threatSquares,
@@ -19,6 +27,10 @@ const winInOne = () =>
 /** Player 1 threatens d4→e4; player 0 (to move) must deal with it. */
 const mustBlock = () =>
   pos({ heights: { d4: 2, e4: 3 }, p0: ['e3', 'a1'], p1: ['d4', 'a5'] });
+
+/** c2 (level 1) sits under c3 (level 2) between two towers: c2→c3 forces a win. */
+const doubleThreat = () =>
+  pos({ heights: { b3: 3, d3: 3, c3: 2, c2: 1 }, p0: ['c2', 'a1'], p1: ['d5', 'e5'] });
 
 describe('winningTurns / threatSquares', () => {
   it('finds the win-in-1 and reports no phantom threats', () => {
@@ -82,7 +94,52 @@ describe('reviewTurn', () => {
   });
 });
 
+describe('forcedLoss', () => {
+  it('is true after the double-threat climb — every reply leaves a win-in-1', () => {
+    const s = doubleThreat();
+    const next = resolveTurn(s, parseTurn(s, 'c2-c3^c2'));
+    expect(forcedLoss(next)).toBe(true);
+  });
+
+  it('is false when a defense exists', () => {
+    expect(forcedLoss(mustBlock())).toBe(false); // dome e4 defends
+  });
+
+  it('is false when the defender can win at once', () => {
+    expect(forcedLoss(winInOne())).toBe(false);
+  });
+});
+
+describe('reviewTurn decisive', () => {
+  it('flags the double threat as decisive', () => {
+    const s = doubleThreat();
+    const r = reviewTurn(s, parseTurn(s, 'c2-c3^c2'));
+    expect(r.created.map(squareName)).toEqual(['b3', 'd3']);
+    expect(r.decisive).toBe(true);
+    expect(reviewLines(r).some((l) => l.includes('The win is forced'))).toBe(true);
+  });
+
+  it('doming one of your own targets is not decisive', () => {
+    const s = doubleThreat();
+    const dome = legalTurns(s).find(
+      (t) =>
+        t.kind === 'move' &&
+        t.path.at(-1) === parseSquareName('c3') &&
+        t.builds.some((b) => b.dome),
+    )!;
+    const r = reviewTurn(s, dome);
+    expect(r.decisive).toBe(false);
+  });
+});
+
 describe('describeTurn', () => {
+  it('annotates a climb with the level reached', () => {
+    const s = pos({ heights: { b2: 1, b3: 2, c3: 3 }, p0: ['b2', 'e1'], p1: ['d5', 'e5'] });
+    expect(describeTurn(s, parseTurn(s, 'b2-b3^a2'))).toBe(
+      'move b2→b3 (up to level 2), then build a block at a2',
+    );
+  });
+
   it('narrates move and build', () => {
     const s = mustBlock();
     expect(describeTurn(s, parseTurn(s, 'e3-d3^e4'))).toBe(
@@ -114,6 +171,13 @@ describe('coachHint', () => {
     expect(hint.pv[0]).toBe(hint.notation);
     expect(hint.candidates.length).toBeGreaterThan(0);
     expect(hint.candidates[0].notation).toBe(hint.notation);
+    expect(hint.lines.some((l) => l.startsWith('The idea: you '))).toBe(true);
+  });
+
+  it('narrates a forced win when the suggestion is unstoppable', { timeout: 15_000 }, () => {
+    const hint = coachHint(doubleThreat(), { iterations: 1000, seed: 7 });
+    expect(hint.notation.startsWith('c2-c3')).toBe(true);
+    expect(hint.lines.some((l) => l.includes('you win next turn'))).toBe(true);
   });
 
   it('suggests a central placement during setup, without searching', () => {

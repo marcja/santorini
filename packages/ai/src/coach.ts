@@ -33,6 +33,26 @@ export function threatSquares(state: GameState): Square[] {
   return uniqueSquares(winningTurns(flipped));
 }
 
+/**
+ * True when the player to move cannot stop the opponent winning next turn:
+ * no immediate win of their own, and every legal turn either leaves the
+ * opponent a win-in-1 or loses on the spot. One movegen per legal turn.
+ */
+export function forcedLoss(state: GameState): boolean {
+  if (state.phase !== 'play') return false;
+  const turns = legalTurns(state);
+  for (const t of turns) {
+    if (t.kind === 'move' && t.win) return false;
+    const next = resolveTurn(state, t);
+    if (next.phase === 'over') {
+      if (next.winner === state.player) return false; // opponent left move-less
+      continue;
+    }
+    if (winningTurns(next).length === 0) return false;
+  }
+  return turns.length > 0; // no turns at all = already lost, not "next turn"
+}
+
 /** Post-move feedback: what a just-played turn achieved or gave away. */
 export interface TurnReview {
   /** The mover won with this turn. */
@@ -47,6 +67,8 @@ export interface TurnReview {
   blocked: Square[];
   /** Win-in-1 squares the mover now threatens for their next turn. */
   created: Square[];
+  /** The created threats are unstoppable — the opponent has no defense. */
+  decisive: boolean;
 }
 
 /**
@@ -61,6 +83,7 @@ export function reviewTurn(state: GameState, turn: Turn): TurnReview {
     avoidable: false,
     blocked: [],
     created: [],
+    decisive: false,
   };
   if (state.phase !== 'play') return review;
 
@@ -75,6 +98,9 @@ export function reviewTurn(state: GameState, turn: Turn): TurnReview {
   review.hangs = uniqueSquares(winningTurns(next));
   review.blocked = threatsBefore.filter((sq) => !review.hangs.includes(sq));
   review.created = threatSquares(next);
+  if (review.hangs.length === 0 && review.created.length > 0) {
+    review.decisive = forcedLoss(next);
+  }
   if (review.hangs.length > 0) {
     review.avoidable = legalTurns(state).some((t) => {
       const alt = resolveTurn(state, t);
@@ -98,13 +124,32 @@ export function describeTurn(state: GameState, turn: Turn): string {
     return `build ${what} at ${squareName(b.at)}`;
   };
   for (const b of turn.preBuilds ?? []) parts.push(`${build(b)} before moving`);
-  parts.push(`move ${turn.path.map(squareName).join('→')}`);
+  const [from, dest] = [turn.path[0], turn.path[turn.path.length - 1]];
+  let move = `move ${turn.path.map(squareName).join('→')}`;
+  // Climbs are the strategic signal worth calling out (wins say it already).
+  if (!turn.win && scratch[dest] > scratch[from]) move += ` (up to level ${scratch[dest]})`;
+  parts.push(move);
   for (const b of turn.builds) parts.push(build(b));
   const joined =
     parts.length <= 2
       ? parts.join(', then ')
       : `${parts.slice(0, -1).join(', ')}, then ${parts[parts.length - 1]}`;
   return turn.win ? `${joined}, winning the game` : joined;
+}
+
+/**
+ * The expected continuation in words instead of raw SGN: "The idea: you …;
+ * expect them to …; then you …". `states[i]` is the position before
+ * `turns[i]`; narrates up to three plies of whatever both arrays cover.
+ */
+function planLine(states: GameState[], turns: Turn[]): string {
+  const plies = Math.min(3, turns.length, states.length - 1);
+  const parts: string[] = [];
+  for (let i = 0; i < plies; i++) {
+    const step = describeTurn(states[i], turns[i]);
+    parts.push(i % 2 === 1 ? `expect them to ${step}` : i === 0 ? `you ${step}` : `then you ${step}`);
+  }
+  return `The idea: ${parts.join('; ')}${turns.length > plies ? '; …' : '.'}`;
 }
 
 /** Search-backed suggestion for the position, with narration. */
@@ -204,13 +249,23 @@ export function coachHint(state: GameState, opts: CoachOptions = {}): CoachHint 
         lines.push('This deals with the immediate threat.');
       }
       if (madeThreats.length > 0) {
+        const at = madeThreats.map(squareName).join(', ');
         lines.push(
-          `It threatens a win at ${madeThreats.map(squareName).join(', ')} next turn — the opponent must respond.`,
+          hangsLeft.length === 0 && forcedLoss(after)
+            ? `It threatens a win at ${at} and the opponent has no way to stop it — you win next turn.`
+            : `It threatens a win at ${at} next turn — the opponent must respond.`,
         );
       }
     }
     lines.push(`Estimated winning chances after it: ${Math.round(result.value * 100)}%.`);
-    if (pv.length > 1) lines.push(`Expected continuation: ${pv.join(' ')}`);
+    if (result.pv.length > 1) lines.push(planLine(pvStates, result.pv));
+    if (result.children.length >= 2) {
+      const alt = result.children[1];
+      const gap = result.children[0].value - alt.value;
+      const altText = `${formatTurn(state, alt.turn)} (${Math.round(alt.value * 100)}%)`;
+      if (gap >= 0.2) lines.push(`This stands out — the next-best try is ${altText}.`);
+      else if (gap >= 0 && gap <= 0.05) lines.push(`${altText} is about as good.`);
+    }
   }
 
   return {
@@ -247,7 +302,11 @@ export function reviewLines(review: TurnReview): string[] {
     lines.push(`Good: you defused the threat at ${names(review.blocked)}.`);
   }
   if (review.created.length > 0 && review.hangs.length === 0) {
-    lines.push(`You now threaten to win at ${names(review.created)}.`);
+    lines.push(
+      review.decisive
+        ? `You now threaten to win at ${names(review.created)} — and the opponent has no way to stop it. The win is forced.`
+        : `You now threaten to win at ${names(review.created)}.`,
+    );
   }
   return lines;
 }
