@@ -79,10 +79,11 @@ Separate offline app; the AI teaches itself via adversarial self-play.
       domes) — partial turns prefix-matched against `legalTurns()`, chooser
       for ambiguous squares, "Finish turn" for optional extras; verified by
       playing god games through the in-app browser (2026-07-11).
-- [ ] God draft per rulebook (issue #7): Challenger picks two unique gods,
+- [x] God draft per rulebook (issue #7): Challenger picks two unique gods,
       opponent takes one, Challenger gets the other and chooses the Start
-      Player. Current free-pick dropdowns are a stand-in; in-game god
-      behavior is unaffected.
+      Player (who takes engine seat 0 — colors are mapped to seats via
+      `seatColor`). Free pick kept as a collapsed dev shortcut; verified
+      through the in-app browser (2026-07-11).
 - [x] Slice 2b: replay/analysis view — step through the game history
       (stepper buttons / arrow keys / click a record move) with a read-only
       board, load a pasted SGN record, export the current game as SGN;

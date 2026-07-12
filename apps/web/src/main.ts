@@ -15,7 +15,9 @@ import {
 } from '@santorini/engine';
 import './style.css';
 
-// Pass-and-play with god powers. Player 0 = Blue, player 1 = Amber.
+// Pass-and-play with god powers. Engine player 0 always moves first; which
+// COLOR (Blue/Amber) sits in seat 0 is decided by the draft's Start Player
+// choice, tracked in `seatColor`.
 //
 // Turn input is generic: clicks accumulate a partial turn (pre-builds, move
 // path, builds) that is prefix-matched against legalTurns(), so multi-step
@@ -27,6 +29,11 @@ import './style.css';
 //
 // Replay/analysis: step through the current game's history (buttons, arrow
 // keys, or clicking a move in the record) or load a pasted SGN record.
+//
+// God selection follows the rulebook draft (rulebook p.2, "God Power Setup"):
+// pick the Challenger → the Challenger offers two unique gods → the opponent
+// takes one, the Challenger gets the other → the Challenger chooses the
+// Start Player. A free-pick panel remains as a dev shortcut.
 
 type StepKind = 'pre' | 'move' | 'build';
 interface Step {
@@ -34,6 +41,21 @@ interface Step {
   sq: Square;
   dome: boolean;
 }
+
+// Color indices: 0 = Blue, 1 = Amber. `seatColor[engineSeat]` = color index;
+// the draft's Start Player takes engine seat 0 (moves/places first).
+const COLOR_NAME = ['Blue', 'Amber'];
+let seatColor: [number, number] = [0, 1];
+const colorOf = (seat: number): number => seatColor[seat];
+
+// God-draft wizard state (null = no draft in progress). Colors, not seats:
+// seats don't exist until the Start Player is chosen at the end.
+type Draft =
+  | { stage: 'challenger' }
+  | { stage: 'pick'; challenger: number; picks: GodId[] }
+  | { stage: 'steal'; challenger: number; offered: [GodId, GodId] }
+  | { stage: 'start'; challenger: number; godOf: [GodId, GodId] };
+let draft: Draft | null = null;
 
 let game = new Game();
 // Partial turn under construction. path[0] is the selected worker's square.
@@ -47,10 +69,7 @@ let choice: { sq: Square; steps: Step[] } | null = null;
 // while replaying.
 let view: number | null = null;
 
-const PLAYER_NAME = ['Blue', 'Amber'];
-
 const app = document.querySelector<HTMLDivElement>('#app')!;
-const godOptions = GOD_IDS.map((id) => `<option value="${id}">${GODS[id].name}</option>`).join('');
 app.innerHTML = `
   <main>
     <header>
@@ -60,10 +79,7 @@ app.innerHTML = `
     <div class="layout">
       <svg id="board" viewBox="0 0 540 540" aria-label="game board"></svg>
       <aside>
-        <div class="setup">
-          <label>Blue god <select id="god0" aria-label="Blue god">${godOptions}</select></label>
-          <label>Amber god <select id="god1" aria-label="Amber god">${godOptions}</select></label>
-        </div>
+        <div class="setup" id="setup"></div>
         <div class="controls">
           <button id="new">New game</button>
           <button id="undo">Undo</button>
@@ -101,8 +117,7 @@ const choiceEl = document.querySelector<HTMLDivElement>('#choice')!;
 const godsEl = document.querySelector<HTMLDivElement>('#gods')!;
 const finishEl = document.querySelector<HTMLButtonElement>('#finish')!;
 const cancelEl = document.querySelector<HTMLButtonElement>('#cancel')!;
-const god0El = document.querySelector<HTMLSelectElement>('#god0')!;
-const god1El = document.querySelector<HTMLSelectElement>('#god1')!;
+const setupEl = document.querySelector<HTMLDivElement>('#setup')!;
 const undoEl = document.querySelector<HTMLButtonElement>('#undo')!;
 const revStartEl = document.querySelector<HTMLButtonElement>('#rev-start')!;
 const revBackEl = document.querySelector<HTMLButtonElement>('#rev-back')!;
@@ -113,11 +128,8 @@ const sgnEl = document.querySelector<HTMLTextAreaElement>('#sgn')!;
 const sgnMsgEl = document.querySelector<HTMLDivElement>('#sgn-msg')!;
 
 document.querySelector('#new')!.addEventListener('click', () => {
-  game = new Game({ gods: [god0El.value as GodId, god1El.value as GodId] });
-  view = null;
-  sgnMsgEl.textContent = '';
-  resetSelection();
-  render();
+  draft = { stage: 'challenger' };
+  renderSetup();
 });
 undoEl.addEventListener('click', () => {
   game.undo();
@@ -147,6 +159,128 @@ choiceEl.addEventListener('click', (e) => {
   applyStep(choice.steps[Number(btn.dataset.i)]);
   render();
 });
+
+// --- god draft (rulebook God Power Setup) ---
+
+/** Start a new game: `godOf` is indexed by COLOR; `startColor` takes seat 0. */
+function startGame(godOf: [GodId, GodId], startColor: number): void {
+  seatColor = startColor === 0 ? [0, 1] : [1, 0];
+  game = new Game({ gods: [godOf[startColor], godOf[1 - startColor]] });
+  draft = null;
+  view = null;
+  sgnMsgEl.textContent = '';
+  resetSelection();
+  renderSetup();
+  render();
+}
+
+setupEl.addEventListener('click', (e) => {
+  const btn = (e.target as Element).closest<HTMLButtonElement>('button[data-act]');
+  if (!btn || !draft) return;
+  const act = btn.dataset.act!;
+  if (act === 'cancel') {
+    draft = null;
+  } else if (act === 'challenger') {
+    draft = { stage: 'pick', challenger: Number(btn.dataset.c), picks: [] };
+  } else if (act === 'base') {
+    return startGame(['none', 'none'], 0);
+  } else if (act === 'free') {
+    const g0 = setupEl.querySelector<HTMLSelectElement>('#free-god0')!.value as GodId;
+    const g1 = setupEl.querySelector<HTMLSelectElement>('#free-god1')!.value as GodId;
+    const start = Number(setupEl.querySelector<HTMLSelectElement>('#free-start')!.value);
+    return startGame([g0, g1], start);
+  } else if (act === 'toggle' && draft.stage === 'pick') {
+    const id = btn.dataset.god as GodId;
+    const i = draft.picks.indexOf(id);
+    if (i >= 0) draft.picks.splice(i, 1);
+    else if (draft.picks.length < 2) draft.picks.push(id);
+  } else if (act === 'offer' && draft.stage === 'pick' && draft.picks.length === 2) {
+    draft = { stage: 'steal', challenger: draft.challenger, offered: [draft.picks[0], draft.picks[1]] };
+  } else if (act === 'steal' && draft.stage === 'steal') {
+    const taken = btn.dataset.god as GodId; // the opponent's choice
+    const other = draft.offered[0] === taken ? draft.offered[1] : draft.offered[0];
+    const godOf: [GodId, GodId] =
+      draft.challenger === 0 ? [other, taken] : [taken, other];
+    draft = { stage: 'start', challenger: draft.challenger, godOf };
+  } else if (act === 'start' && draft.stage === 'start') {
+    return startGame(draft.godOf, Number(btn.dataset.c));
+  }
+  renderSetup();
+});
+
+function setupHtml(): string {
+  if (!draft) return '';
+  const chip = (c: number) => `<span class="chip p${c + 1}"></span>`;
+  const cancelBtn = '<button data-act="cancel">Cancel</button>';
+  if (draft.stage === 'challenger') {
+    const godOptions = GOD_IDS.filter((id) => id !== 'none')
+      .map((id) => `<option value="${id}">${GODS[id].name}</option>`)
+      .join('');
+    return `
+      <div class="draft-title">New game — who is the Challenger?</div>
+      <div class="draft-row">
+        <button data-act="challenger" data-c="0">${chip(0)} Blue</button>
+        <button data-act="challenger" data-c="1">${chip(1)} Amber</button>
+      </div>
+      <div class="draft-row">
+        <button data-act="base">No gods (base game)</button>
+        ${cancelBtn}
+      </div>
+      <details class="free-pick">
+        <summary>Free pick (dev shortcut)</summary>
+        <label>Blue god <select id="free-god0" aria-label="Blue god"><option value="none">None</option>${godOptions}</select></label>
+        <label>Amber god <select id="free-god1" aria-label="Amber god"><option value="none">None</option>${godOptions}</select></label>
+        <label>Start Player <select id="free-start" aria-label="Start Player">
+          <option value="0">Blue</option><option value="1">Amber</option>
+        </select></label>
+        <button data-act="free">Start (free pick)</button>
+      </details>`;
+  }
+  if (draft.stage === 'pick') {
+    const picks = draft.picks;
+    const grid = GOD_IDS.filter((id) => id !== 'none')
+      .map((id) => {
+        const sel = picks.includes(id) ? ' class="selected"' : '';
+        return `<button${sel} data-act="toggle" data-god="${id}">${GODS[id].name}</button>`;
+      })
+      .join('');
+    return `
+      <div class="draft-title">${chip(draft.challenger)} ${COLOR_NAME[draft.challenger]} (Challenger):
+        choose two gods to offer (${picks.length}/2)</div>
+      <div class="god-grid">${grid}</div>
+      <div class="draft-row">
+        <button data-act="offer" ${picks.length === 2 ? '' : 'disabled'}>Offer these gods</button>
+        ${cancelBtn}
+      </div>`;
+  }
+  if (draft.stage === 'steal') {
+    const op = 1 - draft.challenger;
+    const cards = draft.offered
+      .map(
+        (id) => `<button class="god-card" data-act="steal" data-god="${id}">
+          <strong>${GODS[id].name}</strong><br>${GODS[id].text}</button>`,
+      )
+      .join('');
+    return `
+      <div class="draft-title">${chip(op)} ${COLOR_NAME[op]}: take one god —
+        the Challenger gets the other</div>
+      ${cards}
+      <div class="draft-row">${cancelBtn}</div>`;
+  }
+  const { challenger, godOf } = draft;
+  const startBtn = (c: number) =>
+    `<button data-act="start" data-c="${c}">${chip(c)} ${COLOR_NAME[c]} (${GODS[godOf[c]].name})</button>`;
+  return `
+    <div class="draft-title">${chip(challenger)} ${COLOR_NAME[challenger]} (Challenger):
+      choose the Start Player — they place workers and move first</div>
+    <div class="draft-row">${startBtn(0)}${startBtn(1)}</div>
+    <div class="draft-row">${cancelBtn}</div>`;
+}
+
+/** Setup panel renders only on draft-state changes so free-pick inputs keep their values. */
+function renderSetup(): void {
+  setupEl.innerHTML = setupHtml();
+}
 
 // --- replay / SGN ---
 
@@ -185,7 +319,9 @@ document.querySelector('#sgn-load')!.addEventListener('click', () => {
   try {
     const loaded = Game.fromSGN(sgnEl.value);
     game = loaded;
-    [god0El.value, god1El.value] = loaded.state.gods;
+    seatColor = [0, 1]; // SGN has no color info: first mover shows as Blue
+    draft = null;
+    renderSetup();
     resetSelection();
     sgnMsgEl.textContent = `Loaded ${loaded.turns.length} turns — step through with ▶.`;
     setView(0);
@@ -348,8 +484,8 @@ function levelRects(sq: Square, h: number): string {
 }
 
 function workerCircle(sq: Square, player: number, ghost = false): string {
-  const fill = player === 0 ? 'var(--p1)' : 'var(--p2)';
-  const stroke = player === 0 ? 'var(--p1-dark)' : 'var(--p2-dark)';
+  const fill = colorOf(player) === 0 ? 'var(--p1)' : 'var(--p2)';
+  const stroke = colorOf(player) === 0 ? 'var(--p1-dark)' : 'var(--p2-dark)';
   return `<circle cx="${cx(sq)}" cy="${cy(sq)}" r="15" fill="${fill}" stroke="${stroke}"
     stroke-width="3" ${ghost ? 'opacity="0.45"' : ''} pointer-events="none"/>`;
 }
@@ -429,21 +565,22 @@ function godsHtml(): string {
   const line = (p: number, g: GodId) =>
     g === 'none'
       ? ''
-      : `<p><span class="chip p${p + 1}"></span> <strong>${GODS[g].name}</strong> — ${GODS[g].text}</p>`;
+      : `<p><span class="chip p${colorOf(p) + 1}"></span> <strong>${GODS[g].name}</strong> — ${GODS[g].text}</p>`;
   return line(0, g0) + line(1, g1);
 }
 
 function playerLabel(p: number): string {
   const g = game.state.gods[p];
-  return g === 'none' ? PLAYER_NAME[p] : `${PLAYER_NAME[p]} (${GODS[g].name})`;
+  const name = COLOR_NAME[colorOf(p)];
+  return g === 'none' ? name : `${name} (${GODS[g].name})`;
 }
 
 function statusText(steps: Step[], finish: MoveTurn | null): string {
   const s = game.state;
-  const chip = `<span class="chip p${s.player + 1}"></span>`;
+  const chip = `<span class="chip p${colorOf(s.player) + 1}"></span>`;
   if (s.phase === 'over') {
     const w = s.winner!;
-    return `<span class="chip p${w + 1}"></span> <strong>${playerLabel(w)} wins!</strong>`;
+    return `<span class="chip p${colorOf(w) + 1}"></span> <strong>${playerLabel(w)} wins!</strong>`;
   }
   if (s.phase === 'setup') {
     const n = pendingPlace === null ? 1 : 2;
@@ -461,7 +598,7 @@ function statusText(steps: Step[], finish: MoveTurn | null): string {
 }
 
 function replayStatus(s: GameState): string {
-  const chip = `<span class="chip p${s.player + 1}"></span>`;
+  const chip = `<span class="chip p${colorOf(s.player) + 1}"></span>`;
   const verb = s.phase === 'setup' ? 'to place' : 'to move';
   return `${chip} Replay ${viewPos()}/${game.turns.length} — ${playerLabel(s.player)} ${verb}`;
 }
