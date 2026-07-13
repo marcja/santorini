@@ -24,9 +24,11 @@ import {
   FEATURE_COUNT,
   Mlp,
   type PlayerSpec,
+  type PolicyFn,
   PolicyValueNet,
   parsePlayerSpec,
   playerFromSpec,
+  type SelfPlayResult,
   selfPlay,
   specName,
 } from '@santorini/ai';
@@ -338,6 +340,165 @@ function cmdGauntlet(args: string[]): void {
   }
 }
 
+/** Run self-play with the parent's search/eval config, logging progress. */
+function runTrainingSelfPlay(
+  parent: Checkpoint,
+  games: number,
+  seed: number,
+  iterations: number,
+  tempTurnsRaw: string,
+  maxHalfTurnsRaw: string,
+): { result: SelfPlayResult; parentPolicy: PolicyFn | null } {
+  const parentPolicy = checkpointPolicyFn(parent.eval);
+  console.log(
+    `self-play: ${games} games, mcts ${iterations} iters` +
+      (parentPolicy ? ' (PUCT)' : '') +
+      `, eval ${parent.eval.type} (gen ${parent.generation})`,
+  );
+  const started = Date.now();
+  let decided = 0;
+  const result = selfPlay(
+    {
+      games,
+      seed,
+      search: { ...parent.search, iterations },
+      evaluate: checkpointEvalFn(parent.eval),
+      ...(parentPolicy ? { policy: parentPolicy } : {}),
+      temperatureTurns: int('temp-turns', tempTurnsRaw),
+      maxHalfTurns: int('max-half-turns', maxHalfTurnsRaw),
+    },
+    (game, i) => {
+      if (game.winner !== null) decided++;
+      console.log(
+        `game ${String(i + 1).padStart(String(games).length)}/${games}  ` +
+          `${game.winner === null ? 'draw' : `P${game.winner + 1} wins`} in ${game.sgn.length} half-turns`,
+      );
+    },
+  );
+  console.log(
+    `${decided}/${games} decided, ${result.samples.length} samples ` +
+      `in ${((Date.now() - started) / 1000).toFixed(1)}s`,
+  );
+  return { result, parentPolicy };
+}
+
+/** Dump self-play games to an SGN file when `--sgn` was given. */
+function maybeWriteSelfPlaySgn(
+  sgnPath: string | undefined,
+  parent: Checkpoint,
+  seed: number,
+  result: SelfPlayResult,
+): void {
+  if (sgnPath === undefined) return;
+  const name = `gen-${parent.generation}-selfplay`;
+  const event = `trainer train seed=${seed}`;
+  const docs = result.games.map((g) =>
+    gameToSgn({ ...g, aSeat: 0 }, name, name, event),
+  );
+  mkdirSync(dirname(sgnPath), { recursive: true });
+  writeFileSync(sgnPath, docs.join('\n'));
+  console.log(`wrote ${result.games.length} games to ${sgnPath}`);
+}
+
+/** Warm start from an mlp parent: shared layer + value head continue the
+ * lineage, the zero policy head starts at uniform priors. */
+function selectPvNet(
+  parent: Checkpoint,
+  hiddenRaw: string,
+  seed: number,
+): PolicyValueNet {
+  if (parent.eval.type === 'pv@1')
+    return new PolicyValueNet(parent.eval.params);
+  if (parent.eval.type === 'mlp@1')
+    return PolicyValueNet.fromMlp(parent.eval.params, ACTION_COUNT);
+  return PolicyValueNet.init(
+    FEATURE_COUNT,
+    int('hidden', hiddenRaw),
+    ACTION_COUNT,
+    seed + 999,
+  );
+}
+
+/** Continue training a net parent; start fresh only from a static parent. */
+function selectMlpNet(
+  parent: Checkpoint,
+  hiddenRaw: string,
+  seed: number,
+): Mlp {
+  return parent.eval.type === 'mlp@1'
+    ? new Mlp(parent.eval.params)
+    : Mlp.init(FEATURE_COUNT, int('hidden', hiddenRaw), seed + 999);
+}
+
+interface TrainedNet {
+  evalSpec: CheckpointEval;
+  hiddenSize: number;
+}
+
+/** Warm-start (or init) a policy+value net and train it on self-play samples. */
+function trainPvNet(
+  parent: Checkpoint,
+  result: SelfPlayResult,
+  seed: number,
+  hiddenRaw: string,
+  epochs: number,
+  batchSize: number,
+  lr: number,
+  weightDecay: number,
+  augment: boolean,
+): TrainedNet {
+  const net = selectPvNet(parent, hiddenRaw, seed);
+  const samples = augment ? augmentPvSamples(result.samples) : result.samples;
+  if (augment)
+    console.log(`augmented to ${samples.length} samples (8 symmetries)`);
+  const losses = net.train(samples, {
+    epochs,
+    batchSize,
+    lr,
+    seed: seed + 1,
+    weightDecay,
+  });
+  losses.forEach((l, e) =>
+    console.log(
+      `epoch ${e + 1}/${epochs}  value loss ${l.value.toFixed(4)}  policy loss ${l.policy.toFixed(4)}`,
+    ),
+  );
+  return {
+    evalSpec: { type: 'pv@1', params: net.toParams() },
+    hiddenSize: net.hiddenSize,
+  };
+}
+
+/** Train a value-only net on self-play samples. */
+function trainMlpNet(
+  parent: Checkpoint,
+  result: SelfPlayResult,
+  seed: number,
+  hiddenRaw: string,
+  epochs: number,
+  batchSize: number,
+  lr: number,
+  augment: boolean,
+): TrainedNet {
+  const net = selectMlpNet(parent, hiddenRaw, seed);
+  const samples = augment ? augmentSamples(result.samples) : result.samples;
+  if (augment)
+    console.log(`augmented to ${samples.length} samples (8 symmetries)`);
+  const losses = net.train(samples, {
+    epochs,
+    batchSize,
+    lr,
+    seed: seed + 1,
+  });
+  losses.forEach((loss, e) =>
+    console.log(`epoch ${e + 1}/${epochs}  loss ${loss.toFixed(4)}`),
+  );
+  return {
+    evalSpec: { type: 'mlp@1', params: net.toParams() },
+    hiddenSize: net.hiddenSize,
+  };
+}
+
 function cmdTrain(args: string[]): void {
   const { values } = parseArgs({
     args,
@@ -381,111 +542,44 @@ function cmdTrain(args: string[]): void {
       : parent.search.iterations;
   const epochs = int('epochs', values.epochs);
 
-  const parentPolicy = checkpointPolicyFn(parent.eval);
-  console.log(
-    `self-play: ${games} games, mcts ${iterations} iters` +
-      (parentPolicy ? ' (PUCT)' : '') +
-      `, eval ${parent.eval.type} (gen ${parent.generation})`,
-  );
-  const started = Date.now();
-  let decided = 0;
-  const result = selfPlay(
-    {
-      games,
-      seed,
-      search: { ...parent.search, iterations },
-      evaluate: checkpointEvalFn(parent.eval),
-      ...(parentPolicy ? { policy: parentPolicy } : {}),
-      temperatureTurns: int('temp-turns', values['temp-turns']),
-      maxHalfTurns: int('max-half-turns', values['max-half-turns']),
-    },
-    (game, i) => {
-      if (game.winner !== null) decided++;
-      console.log(
-        `game ${String(i + 1).padStart(String(games).length)}/${games}  ` +
-          `${game.winner === null ? 'draw' : `P${game.winner + 1} wins`} in ${game.sgn.length} half-turns`,
-      );
-    },
-  );
-  console.log(
-    `${decided}/${games} decided, ${result.samples.length} samples ` +
-      `in ${((Date.now() - started) / 1000).toFixed(1)}s`,
+  const { result, parentPolicy } = runTrainingSelfPlay(
+    parent,
+    games,
+    seed,
+    iterations,
+    values['temp-turns'],
+    values['max-half-turns'],
   );
 
-  if (values.sgn !== undefined) {
-    const name = `gen-${parent.generation}-selfplay`;
-    const event = `trainer train seed=${seed}`;
-    const docs = result.games.map((g) =>
-      gameToSgn({ ...g, aSeat: 0 }, name, name, event),
-    );
-    mkdirSync(dirname(values.sgn), { recursive: true });
-    writeFileSync(values.sgn, docs.join('\n'));
-    console.log(`wrote ${result.games.length} games to ${values.sgn}`);
-  }
+  maybeWriteSelfPlaySgn(values.sgn, parent, seed, result);
 
   // A pv parent stays pv (--pv implied); otherwise --pv upgrades the lineage.
   const pv = values.pv || parent.eval.type === 'pv@1';
   const weightDecay = float('wd', values.wd);
   const batchSize = int('batch', values.batch);
   const lr = float('lr', values.lr);
-  let evalSpec: CheckpointEval;
-  let hiddenSize: number;
-  if (pv) {
-    // Warm start from an mlp parent: shared layer + value head continue the
-    // lineage, the zero policy head starts at uniform priors.
-    const net =
-      parent.eval.type === 'pv@1'
-        ? new PolicyValueNet(parent.eval.params)
-        : parent.eval.type === 'mlp@1'
-          ? PolicyValueNet.fromMlp(parent.eval.params, ACTION_COUNT)
-          : PolicyValueNet.init(
-              FEATURE_COUNT,
-              int('hidden', values.hidden),
-              ACTION_COUNT,
-              seed + 999,
-            );
-    const samples = values.augment
-      ? augmentPvSamples(result.samples)
-      : result.samples;
-    if (values.augment)
-      console.log(`augmented to ${samples.length} samples (8 symmetries)`);
-    const losses = net.train(samples, {
-      epochs,
-      batchSize,
-      lr,
-      seed: seed + 1,
-      weightDecay,
-    });
-    losses.forEach((l, e) =>
-      console.log(
-        `epoch ${e + 1}/${epochs}  value loss ${l.value.toFixed(4)}  policy loss ${l.policy.toFixed(4)}`,
-      ),
-    );
-    evalSpec = { type: 'pv@1', params: net.toParams() };
-    hiddenSize = net.hiddenSize;
-  } else {
-    // Continue training a net parent; start fresh only from a static parent.
-    const net =
-      parent.eval.type === 'mlp@1'
-        ? new Mlp(parent.eval.params)
-        : Mlp.init(FEATURE_COUNT, int('hidden', values.hidden), seed + 999);
-    const samples = values.augment
-      ? augmentSamples(result.samples)
-      : result.samples;
-    if (values.augment)
-      console.log(`augmented to ${samples.length} samples (8 symmetries)`);
-    const losses = net.train(samples, {
-      epochs,
-      batchSize,
-      lr,
-      seed: seed + 1,
-    });
-    losses.forEach((loss, e) =>
-      console.log(`epoch ${e + 1}/${epochs}  loss ${loss.toFixed(4)}`),
-    );
-    evalSpec = { type: 'mlp@1', params: net.toParams() };
-    hiddenSize = net.hiddenSize;
-  }
+  const { evalSpec, hiddenSize } = pv
+    ? trainPvNet(
+        parent,
+        result,
+        seed,
+        values.hidden,
+        epochs,
+        batchSize,
+        lr,
+        weightDecay,
+        values.augment,
+      )
+    : trainMlpNet(
+        parent,
+        result,
+        seed,
+        values.hidden,
+        epochs,
+        batchSize,
+        lr,
+        values.augment,
+      );
 
   const ckpt = createCheckpoint(new Date().toISOString(), {
     generation,

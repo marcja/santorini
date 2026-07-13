@@ -93,52 +93,69 @@ export function selfPlay(
   const samples: PvSample[] = [];
 
   for (let g = 0; g < config.games; g++) {
-    const players = [0, 1].map(
-      (p) =>
-        new MctsPlayer({
-          ...config.search,
-          evaluate: config.evaluate,
-          policy: config.policy,
-          seed: config.seed + 2 * g + p,
-        }),
+    const players = makeSelfPlayPlayers(config, g);
+    const played = playOneSelfPlayGame(
+      players,
+      rand,
+      temperatureTurns,
+      maxHalfTurns,
     );
-
-    let state = createInitialState();
-    const sgn: string[] = [];
-    // Positions seen this game, with who was to move; labeled once we know the winner.
-    const seen: {
-      x: Float32Array;
-      mover: Player;
-      actions: number[];
-      targets: number[];
-    }[] = [];
-    while (state.phase !== 'over' && sgn.length < maxHalfTurns) {
-      const result = players[state.player].search(state);
-      if (state.phase === 'play') {
-        seen.push({
-          x: encodeFeatures(state),
-          mover: state.player,
-          ...policyTarget(result),
-        });
-      }
-      const turn =
-        sgn.length < temperatureTurns ? sampleTurn(result, rand) : result.turn;
-      sgn.push(formatTurn(state, turn));
-      state = resolveTurn(state, turn);
-    }
-    const winner = state.phase === 'over' ? state.winner : null;
-
-    for (const { x, mover, actions, targets } of seen) {
-      samples.push({
-        x,
-        y: winner === null ? 0.5 : winner === mover ? 1 : 0,
-        actions,
-        targets,
-      });
-    }
-    const game: SelfPlayGame = { winner, sgn };
-    games.push(game);
-    onGame?.(game, g);
+    samples.push(...played.samples);
+    games.push(played.game);
+    onGame?.(played.game, g);
   }
   return { games, samples };
+}
+
+function makeSelfPlayPlayers(config: SelfPlayConfig, g: number): MctsPlayer[] {
+  return [0, 1].map(
+    (p) =>
+      new MctsPlayer({
+        ...config.search,
+        evaluate: config.evaluate,
+        policy: config.policy,
+        seed: config.seed + 2 * g + p,
+      }),
+  );
+}
+
+/** A position seen mid-game, labeled once the game's winner is known. */
+interface SeenPosition {
+  x: Float32Array;
+  mover: Player;
+  actions: number[];
+  targets: number[];
+}
+
+function playOneSelfPlayGame(
+  players: MctsPlayer[],
+  rand: () => number,
+  temperatureTurns: number,
+  maxHalfTurns: number,
+): { game: SelfPlayGame; samples: PvSample[] } {
+  let state = createInitialState();
+  const sgn: string[] = [];
+  const seen: SeenPosition[] = [];
+  while (state.phase !== 'over' && sgn.length < maxHalfTurns) {
+    const result = players[state.player].search(state);
+    if (state.phase === 'play') {
+      seen.push({
+        x: encodeFeatures(state),
+        mover: state.player,
+        ...policyTarget(result),
+      });
+    }
+    const turn =
+      sgn.length < temperatureTurns ? sampleTurn(result, rand) : result.turn;
+    sgn.push(formatTurn(state, turn));
+    state = resolveTurn(state, turn);
+  }
+  const winner = state.phase === 'over' ? state.winner : null;
+  const samples = seen.map(({ x, mover, actions, targets }) => ({
+    x,
+    y: winner === null ? 0.5 : winner === mover ? 1 : 0,
+    actions,
+    targets,
+  }));
+  return { game: { winner, sgn }, samples };
 }

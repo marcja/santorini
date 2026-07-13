@@ -21,9 +21,8 @@ export type PlayerSpec =
   | { kind: 'mcts'; iterations: number; c?: number; playoutDepth?: number }
   | { kind: 'ckpt'; path: string; iterations?: number };
 
-export function parsePlayerSpec(spec: string): PlayerSpec {
-  const [head, ...rest] = spec.split(',');
-  const [kind, arg] = head.split(':', 2);
+/** Parse the `,key=value` suffixes shared by every player spec kind. */
+function parseSpecOptions(rest: string[], spec: string): Map<string, string> {
   const options = new Map<string, string>();
   for (const part of rest) {
     const [k, v] = part.split('=', 2);
@@ -33,48 +32,85 @@ export function parsePlayerSpec(spec: string): PlayerSpec {
       );
     options.set(k, v);
   }
-  const num = (key: string, value: string): number => {
-    const x = Number(value);
-    if (!Number.isFinite(x))
-      throw new Error(`invalid ${key} in player spec ${spec}`);
-    return x;
+  return options;
+}
+
+function parseSpecNumber(key: string, value: string, spec: string): number {
+  const x = Number(value);
+  if (!Number.isFinite(x))
+    throw new Error(`invalid ${key} in player spec ${spec}`);
+  return x;
+}
+
+function expectSpecOptions(
+  options: Map<string, string>,
+  allowed: string[],
+  spec: string,
+): void {
+  for (const k of options.keys()) {
+    if (!allowed.includes(k))
+      throw new Error(`unknown option ${k} in player spec ${spec}`);
+  }
+}
+
+function parseSimpleSpec(
+  kind: 'random' | 'greedy',
+  arg: string | undefined,
+  options: Map<string, string>,
+  spec: string,
+): PlayerSpec {
+  expectSpecOptions(options, [], spec);
+  if (arg !== undefined)
+    throw new Error(`${kind} takes no argument (got ${spec})`);
+  return { kind };
+}
+
+function parseMctsSpec(
+  arg: string | undefined,
+  options: Map<string, string>,
+  spec: string,
+): PlayerSpec {
+  expectSpecOptions(options, ['c', 'depth'], spec);
+  if (arg === undefined)
+    throw new Error(`mcts needs iterations, e.g. mcts:1000 (got ${spec})`);
+  const parsed: PlayerSpec = {
+    kind: 'mcts',
+    iterations: parseSpecNumber('iterations', arg, spec),
   };
-  const expect = (allowed: string[]): void => {
-    for (const k of options.keys()) {
-      if (!allowed.includes(k))
-        throw new Error(`unknown option ${k} in player spec ${spec}`);
-    }
-  };
+  if (options.has('c'))
+    parsed.c = parseSpecNumber('c', options.get('c')!, spec);
+  if (options.has('depth'))
+    parsed.playoutDepth = parseSpecNumber('depth', options.get('depth')!, spec);
+  return parsed;
+}
+
+function parseCkptSpec(
+  arg: string | undefined,
+  options: Map<string, string>,
+  spec: string,
+): PlayerSpec {
+  expectSpecOptions(options, ['iters'], spec);
+  if (arg === undefined)
+    throw new Error(`ckpt needs a path, e.g. ckpt:models/gen-000.json`);
+  const parsed: PlayerSpec = { kind: 'ckpt', path: arg };
+  if (options.has('iters'))
+    parsed.iterations = parseSpecNumber('iters', options.get('iters')!, spec);
+  return parsed;
+}
+
+export function parsePlayerSpec(spec: string): PlayerSpec {
+  const [head, ...rest] = spec.split(',');
+  const [kind, arg] = head.split(':', 2);
+  const options = parseSpecOptions(rest, spec);
 
   switch (kind) {
     case 'random':
     case 'greedy':
-      expect([]);
-      if (arg !== undefined)
-        throw new Error(`${kind} takes no argument (got ${spec})`);
-      return { kind };
-    case 'mcts': {
-      expect(['c', 'depth']);
-      if (arg === undefined)
-        throw new Error(`mcts needs iterations, e.g. mcts:1000 (got ${spec})`);
-      const parsed: PlayerSpec = {
-        kind: 'mcts',
-        iterations: num('iterations', arg),
-      };
-      if (options.has('c')) parsed.c = num('c', options.get('c')!);
-      if (options.has('depth'))
-        parsed.playoutDepth = num('depth', options.get('depth')!);
-      return parsed;
-    }
-    case 'ckpt': {
-      expect(['iters']);
-      if (arg === undefined)
-        throw new Error(`ckpt needs a path, e.g. ckpt:models/gen-000.json`);
-      const parsed: PlayerSpec = { kind: 'ckpt', path: arg };
-      if (options.has('iters'))
-        parsed.iterations = num('iters', options.get('iters')!);
-      return parsed;
-    }
+      return parseSimpleSpec(kind, arg, options, spec);
+    case 'mcts':
+      return parseMctsSpec(arg, options, spec);
+    case 'ckpt':
+      return parseCkptSpec(arg, options, spec);
     default:
       throw new Error(
         `unknown player kind ${JSON.stringify(kind)} (expected random|greedy|mcts|ckpt)`,

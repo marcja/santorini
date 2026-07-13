@@ -31,6 +31,21 @@ export interface TrainOptions {
   seed?: number;
 }
 
+/** Per-batch gradient accumulators, reused across batches to avoid reallocation. */
+interface MlpGrads {
+  gw1: Float64Array;
+  gb1: Float64Array;
+  gw2: Float64Array;
+  gb2: number;
+}
+
+function shuffleInPlace(order: number[], rand: () => number): void {
+  for (let i = order.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [order[i], order[j]] = [order[j], order[i]];
+  }
+}
+
 export class Mlp {
   readonly inputSize: number;
   readonly hiddenSize: number;
@@ -105,56 +120,79 @@ export class Mlp {
     const batchSize = opts.batchSize ?? 64;
     const lr = opts.lr ?? 0.05;
     const rand = mulberry32(opts.seed ?? 1);
-    const { w1, b1, w2, h, inputSize, hiddenSize } = this;
-
-    const gw1 = new Float64Array(w1.length);
-    const gb1 = new Float64Array(hiddenSize);
-    const gw2 = new Float64Array(hiddenSize);
     const order = samples.map((_, i) => i);
+    const grads: MlpGrads = {
+      gw1: new Float64Array(this.w1.length),
+      gb1: new Float64Array(this.hiddenSize),
+      gw2: new Float64Array(this.hiddenSize),
+      gb2: 0,
+    };
     const losses: number[] = [];
 
     for (let e = 0; e < epochs; e++) {
-      // Fisher–Yates reshuffle each epoch.
-      for (let i = order.length - 1; i > 0; i--) {
-        const j = Math.floor(rand() * (i + 1));
-        [order[i], order[j]] = [order[j], order[i]];
-      }
+      shuffleInPlace(order, rand); // Fisher–Yates reshuffle each epoch.
       let lossSum = 0;
       for (let start = 0; start < order.length; start += batchSize) {
         const end = Math.min(start + batchSize, order.length);
-        gw1.fill(0);
-        gb1.fill(0);
-        gw2.fill(0);
-        let gb2 = 0;
-        for (let k = start; k < end; k++) {
-          const { x, y } = samples[order[k]];
-          const logit = this.forward(x);
-          const p = 1 / (1 + Math.exp(-logit));
-          lossSum +=
-            y * Math.log(Math.max(p, 1e-12)) +
-            (1 - y) * Math.log(Math.max(1 - p, 1e-12));
-          const dLogit = p - y;
-          gb2 += dLogit;
-          for (let j = 0; j < hiddenSize; j++) {
-            if (h[j] <= 0) continue;
-            gw2[j] += dLogit * h[j];
-            const dh = dLogit * w2[j];
-            const row = j * inputSize;
-            for (let i = 0; i < inputSize; i++) gw1[row + i] += dh * x[i];
-            gb1[j] += dh;
-          }
-        }
-        const step = lr / (end - start);
-        for (let i = 0; i < w1.length; i++) w1[i] -= step * gw1[i];
-        for (let j = 0; j < hiddenSize; j++) {
-          b1[j] -= step * gb1[j];
-          w2[j] -= step * gw2[j];
-        }
-        this.b2 -= step * gb2;
+        lossSum += this.trainBatch(samples, order, start, end, grads, lr);
       }
       losses.push(-lossSum / order.length);
     }
     return losses;
+  }
+
+  /** One SGD step over samples[order[start..end)]: accumulate gradients, then apply them. Returns the batch's summed log-likelihood. */
+  private trainBatch(
+    samples: Sample[],
+    order: number[],
+    start: number,
+    end: number,
+    grads: MlpGrads,
+    lr: number,
+  ): number {
+    grads.gw1.fill(0);
+    grads.gb1.fill(0);
+    grads.gw2.fill(0);
+    grads.gb2 = 0;
+    let lossSum = 0;
+    for (let k = start; k < end; k++) {
+      lossSum += this.accumulateSampleGrad(samples[order[k]], grads);
+    }
+    const step = lr / (end - start);
+    this.applyGradStep(grads, step);
+    return lossSum;
+  }
+
+  /** Forward+backward for one sample; accumulates into `grads`. Returns its log-likelihood term. */
+  private accumulateSampleGrad(sample: Sample, grads: MlpGrads): number {
+    const { w2, h, inputSize, hiddenSize } = this;
+    const { x, y } = sample;
+    const logit = this.forward(x);
+    const p = 1 / (1 + Math.exp(-logit));
+    const ll =
+      y * Math.log(Math.max(p, 1e-12)) +
+      (1 - y) * Math.log(Math.max(1 - p, 1e-12));
+    const dLogit = p - y;
+    grads.gb2 += dLogit;
+    for (let j = 0; j < hiddenSize; j++) {
+      if (h[j] <= 0) continue;
+      grads.gw2[j] += dLogit * h[j];
+      const dh = dLogit * w2[j];
+      const row = j * inputSize;
+      for (let i = 0; i < inputSize; i++) grads.gw1[row + i] += dh * x[i];
+      grads.gb1[j] += dh;
+    }
+    return ll;
+  }
+
+  private applyGradStep(grads: MlpGrads, step: number): void {
+    const { w1, b1, w2, hiddenSize } = this;
+    for (let i = 0; i < w1.length; i++) w1[i] -= step * grads.gw1[i];
+    for (let j = 0; j < hiddenSize; j++) {
+      b1[j] -= step * grads.gb1[j];
+      w2[j] -= step * grads.gw2[j];
+    }
+    this.b2 -= step * grads.gb2;
   }
 
   /** Plain-array params for JSON, rounded to 6 decimals to keep files small. */

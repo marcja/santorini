@@ -13,7 +13,7 @@ import {
   rowOf,
   squareName,
 } from '@santorini/engine';
-import { type MctsOptions, MctsPlayer } from './mcts.ts';
+import { type MctsOptions, MctsPlayer, type SearchResult } from './mcts.ts';
 import { resolveTurn } from './player.ts';
 
 // Coach layer: turns engine facts (win-in-1s, threats) and search statistics
@@ -205,6 +205,136 @@ export interface CoachOptions extends MctsOptions {
 }
 
 /**
+ * Placement suggestion by centrality (~600 placement pairs starve MCTS visit
+ * counts into noise, so this skips search entirely) — the honest version of
+ * the same advice a search would give.
+ */
+function setupHint(state: GameState): CoachHint {
+  const central = (sq: Square): number =>
+    2 - Math.max(Math.abs(colOf(sq) - 2), Math.abs(rowOf(sq) - 2));
+  let turn = legalTurns(state)[0];
+  let best = -Infinity;
+  for (const t of legalTurns(state)) {
+    if (t.kind !== 'place') continue;
+    const score = central(t.squares[0]) + central(t.squares[1]);
+    if (score > best) {
+      best = score;
+      turn = t;
+    }
+  }
+  return {
+    turn,
+    notation: formatTurn(state, turn),
+    winProb: 0.5,
+    wins: [],
+    threats: [],
+    pv: [],
+    candidates: [],
+    lines: [
+      `Suggested: ${describeTurn(state, turn)}.`,
+      'Central squares reach more of the board — corners cramp your options.',
+    ],
+  };
+}
+
+/** Build the PV states/strings together (`pvStates[i]` precedes `pv[i]`). */
+function buildPv(
+  state: GameState,
+  turns: Turn[],
+  length: number,
+): { pvStates: GameState[]; pv: string[] } {
+  const pvStates: GameState[] = [state];
+  const pv: string[] = [];
+  for (const t of turns.slice(0, length)) {
+    const s = pvStates[pvStates.length - 1];
+    pv.push(formatTurn(s, t));
+    pvStates.push(resolveTurn(s, t));
+  }
+  return { pvStates, pv };
+}
+
+function winNowLines(
+  state: GameState,
+  result: SearchResult,
+  notation: string,
+): string[] {
+  return [
+    `You can win right now — ${describeTurn(state, result.turn)} (${notation}).`,
+  ];
+}
+
+function threatWarningLine(threats: Square[]): string | null {
+  if (threats.length === 0) return null;
+  return (
+    `Danger: the opponent threatens to win at ${threats.map(squareName).join(', ')}. ` +
+    'Your move must stop that (cap the tower, occupy or take the square, or block the approach) — or create a faster win.'
+  );
+}
+
+/** Lines describing what the suggested turn achieves for the position after it. */
+function afterMoveLines(
+  state: GameState,
+  after: GameState,
+  threats: Square[],
+): string[] {
+  if (after.phase === 'over' && after.winner === state.player) {
+    return [
+      'This leaves the opponent with no legal move — they lose immediately.',
+    ];
+  }
+  if (after.phase !== 'play') return [];
+
+  const lines: string[] = [];
+  const hangsLeft = uniqueSquares(winningTurns(after));
+  const madeThreats = threatSquares(after);
+  if (threats.length > 0 && hangsLeft.length === 0) {
+    lines.push('This deals with the immediate threat.');
+  }
+  if (madeThreats.length > 0) {
+    const at = madeThreats.map(squareName).join(', ');
+    lines.push(
+      hangsLeft.length === 0 && forcedLoss(after)
+        ? `It threatens a win at ${at} and the opponent has no way to stop it — you win next turn.`
+        : `It threatens a win at ${at} next turn — the opponent must respond.`,
+    );
+  }
+  return lines;
+}
+
+/** Compares the top two root candidates; null when there's nothing to say. */
+function comparisonLine(state: GameState, result: SearchResult): string | null {
+  if (result.children.length < 2) return null;
+  const alt = result.children[1];
+  const gap = result.children[0].value - alt.value;
+  const altText = `${formatTurn(state, alt.turn)} (${Math.round(alt.value * 100)}%)`;
+  if (gap >= 0.2) return `This stands out — the next-best try is ${altText}.`;
+  if (gap >= 0 && gap <= 0.05) return `${altText} is about as good.`;
+  return null;
+}
+
+function noWinLines(
+  state: GameState,
+  result: SearchResult,
+  threats: Square[],
+  notation: string,
+  pvStates: GameState[],
+): string[] {
+  const lines: string[] = [];
+  const threatLine = threatWarningLine(threats);
+  if (threatLine) lines.push(threatLine);
+  lines.push(`Suggested: ${describeTurn(state, result.turn)} (${notation}).`);
+  const after = resolveTurn(state, result.turn);
+  lines.push(...afterMoveLines(state, after, threats));
+  lines.push(
+    `Estimated winning chances after it: ${Math.round(result.value * 100)}%.`,
+  );
+  if (result.pv.length > 1) lines.push(planLine(pvStates, result.pv));
+  const comparison = comparisonLine(state, result);
+  if (comparison) lines.push(comparison);
+  return lines;
+}
+
+/**
  * Analyze a position with a fresh (seeded) search and narrate the result.
  * `state` must have at least one legal turn — live `play`/`setup` states
  * always do (no-move losses resolve when the previous turn is played).
@@ -213,96 +343,18 @@ export function coachHint(
   state: GameState,
   opts: CoachOptions = {},
 ): CoachHint {
-  // Placement branching (~600 pairs) starves MCTS visit counts into noise;
-  // suggest by centrality directly — the honest version of the same advice.
-  if (state.phase === 'setup') {
-    const central = (sq: Square): number =>
-      2 - Math.max(Math.abs(colOf(sq) - 2), Math.abs(rowOf(sq) - 2));
-    let turn = legalTurns(state)[0];
-    let best = -Infinity;
-    for (const t of legalTurns(state)) {
-      if (t.kind !== 'place') continue;
-      const score = central(t.squares[0]) + central(t.squares[1]);
-      if (score > best) {
-        best = score;
-        turn = t;
-      }
-    }
-    return {
-      turn,
-      notation: formatTurn(state, turn),
-      winProb: 0.5,
-      wins: [],
-      threats: [],
-      pv: [],
-      candidates: [],
-      lines: [
-        `Suggested: ${describeTurn(state, turn)}.`,
-        'Central squares reach more of the board — corners cramp your options.',
-      ],
-    };
-  }
+  if (state.phase === 'setup') return setupHint(state);
 
   const result = new MctsPlayer(opts).search(state);
   const wins = uniqueSquares(winningTurns(state));
   const threats = threatSquares(state);
-
-  const pvStates: GameState[] = [state];
-  const pv: string[] = [];
-  for (const t of result.pv.slice(0, opts.pvLength ?? 5)) {
-    const s = pvStates[pvStates.length - 1];
-    pv.push(formatTurn(s, t));
-    pvStates.push(resolveTurn(s, t));
-  }
+  const { pvStates, pv } = buildPv(state, result.pv, opts.pvLength ?? 5);
   const notation = formatTurn(state, result.turn);
 
-  const lines: string[] = [];
-  if (wins.length > 0) {
-    lines.push(
-      `You can win right now — ${describeTurn(state, result.turn)} (${notation}).`,
-    );
-  } else {
-    if (threats.length > 0) {
-      lines.push(
-        `Danger: the opponent threatens to win at ${threats.map(squareName).join(', ')}. ` +
-          'Your move must stop that (cap the tower, occupy or take the square, or block the approach) — or create a faster win.',
-      );
-    }
-    lines.push(`Suggested: ${describeTurn(state, result.turn)} (${notation}).`);
-    const after = resolveTurn(state, result.turn);
-    if (after.phase === 'over' && after.winner === state.player) {
-      lines.push(
-        'This leaves the opponent with no legal move — they lose immediately.',
-      );
-    } else if (after.phase === 'play') {
-      const hangsLeft = uniqueSquares(winningTurns(after));
-      const madeThreats = threatSquares(after);
-      if (threats.length > 0 && hangsLeft.length === 0) {
-        lines.push('This deals with the immediate threat.');
-      }
-      if (madeThreats.length > 0) {
-        const at = madeThreats.map(squareName).join(', ');
-        lines.push(
-          hangsLeft.length === 0 && forcedLoss(after)
-            ? `It threatens a win at ${at} and the opponent has no way to stop it — you win next turn.`
-            : `It threatens a win at ${at} next turn — the opponent must respond.`,
-        );
-      }
-    }
-    lines.push(
-      `Estimated winning chances after it: ${Math.round(result.value * 100)}%.`,
-    );
-    if (result.pv.length > 1) lines.push(planLine(pvStates, result.pv));
-    if (result.children.length >= 2) {
-      const alt = result.children[1];
-      const gap = result.children[0].value - alt.value;
-      const altText = `${formatTurn(state, alt.turn)} (${Math.round(alt.value * 100)}%)`;
-      if (gap >= 0.2)
-        lines.push(`This stands out — the next-best try is ${altText}.`);
-      else if (gap >= 0 && gap <= 0.05)
-        lines.push(`${altText} is about as good.`);
-    }
-  }
+  const lines =
+    wins.length > 0
+      ? winNowLines(state, result, notation)
+      : noWinLines(state, result, threats, notation, pvStates);
 
   return {
     turn: result.turn,

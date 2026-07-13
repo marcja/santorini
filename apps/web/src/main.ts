@@ -299,6 +299,30 @@ lessonBodyEl.addEventListener('click', (e) => {
   }
 });
 
+/** The exercise panel for a lesson (empty if the lesson has no exercise). */
+function lessonExerciseHtml(lesson: Lesson, idx: number): string {
+  const ex = lesson.exercise;
+  if (!ex) return '';
+  if (!exercise || exercise.lesson !== lesson) {
+    return `<div class="lesson-ex"><p><strong>Exercise:</strong> ${ex.task}</p>
+      <button data-act="try">Try it on the board</button></div>`;
+  }
+  if (exercise.verdict === null) {
+    return `<div class="lesson-ex"><p><strong>Your move:</strong> ${ex.task}</p>
+      <button data-act="try">Reset position</button></div>`;
+  }
+  const v = exercise.verdict;
+  const nextBtn =
+    v.passed && idx + 1 < LESSONS.length
+      ? '<button data-act="next">Next lesson</button>'
+      : '';
+  return `<div class="lesson-ex ${v.passed ? 'lesson-pass' : 'lesson-fail'}">
+    <p><strong>${v.passed ? '✓ Solved' : '✗ Not quite'}</strong></p>
+    ${v.lines.map((l) => `<p>${l}</p>`).join('')}
+    <div class="draft-row"><button data-act="try">${v.passed ? 'Replay' : 'Retry'}</button>${nextBtn}</div>
+  </div>`;
+}
+
 function lessonHtml(): string {
   if (lessonIdx === null) return '';
   const lesson = LESSONS[lessonIdx];
@@ -306,26 +330,8 @@ function lessonHtml(): string {
     `<div class="lesson-title">${lesson.title}
       <span class="lesson-level">${LEVEL_LABEL[lesson.level]}</span></div>`,
     ...lesson.body.map((p) => `<p>${p}</p>`),
+    lessonExerciseHtml(lesson, lessonIdx),
   ];
-  const ex = lesson.exercise;
-  if (ex && (!exercise || exercise.lesson !== lesson)) {
-    parts.push(`<div class="lesson-ex"><p><strong>Exercise:</strong> ${ex.task}</p>
-      <button data-act="try">Try it on the board</button></div>`);
-  } else if (ex && exercise!.verdict === null) {
-    parts.push(`<div class="lesson-ex"><p><strong>Your move:</strong> ${ex.task}</p>
-      <button data-act="try">Reset position</button></div>`);
-  } else if (ex) {
-    const v = exercise!.verdict!;
-    const nextBtn =
-      v.passed && lessonIdx + 1 < LESSONS.length
-        ? '<button data-act="next">Next lesson</button>'
-        : '';
-    parts.push(`<div class="lesson-ex ${v.passed ? 'lesson-pass' : 'lesson-fail'}">
-      <p><strong>${v.passed ? '✓ Solved' : '✗ Not quite'}</strong></p>
-      ${v.lines.map((l) => `<p>${l}</p>`).join('')}
-      <div class="draft-row"><button data-act="try">${v.passed ? 'Replay' : 'Retry'}</button>${nextBtn}</div>
-    </div>`);
-  }
   return parts.join('');
 }
 
@@ -463,19 +469,40 @@ function startGame(godOf: [GodId, GodId], startColor: number): void {
   render();
 }
 
-setupEl.addEventListener('click', (e) => {
-  const btn = (e.target as Element).closest<HTMLButtonElement>(
-    'button[data-act]',
-  );
-  if (!btn || !draft) return;
-  const act = btn.dataset.act!;
-  if (act === 'cancel') {
-    draft = null;
-  } else if (act === 'challenger') {
-    draft = { stage: 'pick', challenger: Number(btn.dataset.c), picks: [] };
-  } else if (act === 'base') {
-    return startGame(['none', 'none'], 0);
-  } else if (act === 'free') {
+function actToggleGod(btn: HTMLButtonElement): void {
+  if (draft?.stage !== 'pick') return;
+  const id = btn.dataset.god as GodId;
+  const i = draft.picks.indexOf(id);
+  if (i >= 0) draft.picks.splice(i, 1);
+  else if (draft.picks.length < 2) draft.picks.push(id);
+}
+
+function actOffer(): void {
+  if (draft?.stage !== 'pick' || draft.picks.length !== 2) return;
+  draft = {
+    stage: 'steal',
+    challenger: draft.challenger,
+    offered: [draft.picks[0], draft.picks[1]],
+  };
+}
+
+function actSteal(btn: HTMLButtonElement): void {
+  if (draft?.stage !== 'steal') return;
+  const taken = btn.dataset.god as GodId; // the opponent's choice
+  const other =
+    draft.offered[0] === taken ? draft.offered[1] : draft.offered[0];
+  const godOf: [GodId, GodId] =
+    draft.challenger === 0 ? [other, taken] : [taken, other];
+  draft = { stage: 'start', challenger: draft.challenger, godOf };
+}
+
+/** Returns true if the click already started a new game (startGame self-renders). */
+function handleSetupAct(act: string, btn: HTMLButtonElement): boolean {
+  if (act === 'base') {
+    startGame(['none', 'none'], 0);
+    return true;
+  }
+  if (act === 'free') {
     const g0 = setupEl.querySelector<HTMLSelectElement>('#free-god0')!
       .value as GodId;
     const g1 = setupEl.querySelector<HTMLSelectElement>('#free-god1')!
@@ -483,32 +510,28 @@ setupEl.addEventListener('click', (e) => {
     const start = Number(
       setupEl.querySelector<HTMLSelectElement>('#free-start')!.value,
     );
-    return startGame([g0, g1], start);
-  } else if (act === 'toggle' && draft.stage === 'pick') {
-    const id = btn.dataset.god as GodId;
-    const i = draft.picks.indexOf(id);
-    if (i >= 0) draft.picks.splice(i, 1);
-    else if (draft.picks.length < 2) draft.picks.push(id);
-  } else if (
-    act === 'offer' &&
-    draft.stage === 'pick' &&
-    draft.picks.length === 2
-  ) {
-    draft = {
-      stage: 'steal',
-      challenger: draft.challenger,
-      offered: [draft.picks[0], draft.picks[1]],
-    };
-  } else if (act === 'steal' && draft.stage === 'steal') {
-    const taken = btn.dataset.god as GodId; // the opponent's choice
-    const other =
-      draft.offered[0] === taken ? draft.offered[1] : draft.offered[0];
-    const godOf: [GodId, GodId] =
-      draft.challenger === 0 ? [other, taken] : [taken, other];
-    draft = { stage: 'start', challenger: draft.challenger, godOf };
-  } else if (act === 'start' && draft.stage === 'start') {
-    return startGame(draft.godOf, Number(btn.dataset.c));
+    startGame([g0, g1], start);
+    return true;
   }
+  if (act === 'start' && draft && draft.stage === 'start') {
+    startGame(draft.godOf, Number(btn.dataset.c));
+    return true;
+  }
+  if (act === 'cancel') draft = null;
+  else if (act === 'challenger')
+    draft = { stage: 'pick', challenger: Number(btn.dataset.c), picks: [] };
+  else if (act === 'toggle') actToggleGod(btn);
+  else if (act === 'offer') actOffer();
+  else if (act === 'steal') actSteal(btn);
+  return false;
+}
+
+setupEl.addEventListener('click', (e) => {
+  const btn = (e.target as Element).closest<HTMLButtonElement>(
+    'button[data-act]',
+  );
+  if (!btn || !draft) return;
+  if (handleSetupAct(btn.dataset.act!, btn)) return;
   renderSetup();
 });
 
@@ -746,28 +769,21 @@ function applyStep(s: Step): void {
   }
 }
 
-function onCellClick(sq: Square): void {
-  if (view !== null) return; // replay is view-only
-  if (aiToMove()) return; // the AI seat's turn — humans can't move for it
-  if (exercise?.verdict) return; // attempt judged — Retry/Replay resets the board
-  const s = game.state;
-  if (s.phase === 'over') return;
-  choice = null;
-
-  if (s.phase === 'setup') {
-    const occupied = workerAt(s, sq) >= 0;
-    if (sq === pendingPlace) {
-      pendingPlace = null;
-    } else if (!occupied && pendingPlace === null) {
-      pendingPlace = sq;
-    } else if (!occupied && pendingPlace !== null) {
-      playHuman({ kind: 'place', squares: [pendingPlace, sq] });
-      pendingPlace = null;
-    }
-    render();
-    return;
+/** Setup-phase click: place or unplace a worker (two clicks form a placement turn). */
+function handleSetupCellClick(s: GameState, sq: Square): void {
+  const occupied = workerAt(s, sq) >= 0;
+  if (sq === pendingPlace) {
+    pendingPlace = null;
+  } else if (!occupied && pendingPlace === null) {
+    pendingPlace = sq;
+  } else if (!occupied && pendingPlace !== null) {
+    playHuman({ kind: 'place', squares: [pendingPlace, sq] });
+    pendingPlace = null;
   }
+}
 
+/** Play-phase click: apply a step, open a chooser, or (re)select a worker. */
+function handlePlayCellClick(s: GameState, sq: Square): void {
   const here = uiOptions().steps.filter((st) => st.sq === sq);
   if (here.length === 1) {
     applyStep(here[0]);
@@ -780,6 +796,23 @@ function onCellClick(sq: Square): void {
     resetSelection();
     if (w >= 0 && ownerOf(w) === s.player && !bareSame) path = [sq];
   }
+}
+
+function onCellClick(sq: Square): void {
+  if (view !== null) return; // replay is view-only
+  if (aiToMove()) return; // the AI seat's turn — humans can't move for it
+  if (exercise?.verdict) return; // attempt judged — Retry/Replay resets the board
+  const s = game.state;
+  if (s.phase === 'over') return;
+  choice = null;
+
+  if (s.phase === 'setup') {
+    handleSetupCellClick(s, sq);
+    render();
+    return;
+  }
+
+  handlePlayCellClick(s, sq);
   render();
 }
 
@@ -811,6 +844,101 @@ function workerCircle(sq: Square, player: number, ghost = false): string {
     stroke-width="3" ${ghost ? 'opacity="0.45"' : ''} pointer-events="none"/>`;
 }
 
+/** Squares highlighted by the coach's last computed search-backed hint. */
+function hintSquaresFor(h: CoachHint | null): Set<Square> {
+  const out = new Set<Square>();
+  if (!h) return out;
+  if (h.turn.kind === 'place') {
+    for (const q of h.turn.squares) out.add(q);
+  } else {
+    out.add(h.turn.path[0]);
+    out.add(h.turn.path[h.turn.path.length - 1]);
+    for (const b of [...(h.turn.preBuilds ?? []), ...h.turn.builds])
+      out.add(b.at);
+  }
+  return out;
+}
+
+interface CellRenderCtx {
+  state: GameState;
+  disp: Uint8Array;
+  workerPos: Square | null;
+  partialBuilds: BuildAction[];
+  steps: Step[];
+  coachThreats: Set<Square>;
+  coachWins: Set<Square>;
+  hintSquares: Set<Square>;
+}
+
+function cellBaseSvg(sq: Square, disp: Uint8Array): string {
+  let svg = `<g class="cell" data-sq="${sq}" role="button" tabindex="0" aria-label="${squareName(sq)}">`;
+  svg += `<rect class="tile" x="${cx(sq) - 46}" y="${cy(sq) - 46}" width="92" height="92" rx="12" fill="var(--sand)"/>`;
+  svg += levelRects(sq, disp[sq]);
+  // faint coordinate label
+  svg += `<text x="${cx(sq) - 40}" y="${cy(sq) + 41}" font-size="10" fill="#8a8371" pointer-events="none">${squareName(sq)}</text>`;
+  return svg;
+}
+
+function cellWorkerSvg(
+  s: GameState,
+  sq: Square,
+  workerPos: Square | null,
+): string {
+  let svg = '';
+  const w = workerAt(s, sq);
+  if (w >= 0) {
+    const movedAway = path.length > 1 && sq === path[0];
+    svg += workerCircle(sq, ownerOf(w), movedAway);
+  }
+  if (sq === pendingPlace) svg += workerCircle(sq, s.player, true);
+  if (path.length > 1 && sq === workerPos)
+    svg += workerCircle(sq, s.player, true);
+  return svg;
+}
+
+/** Overlay rings/dots for selection, pending builds, legal steps, and coach info. */
+function cellMarkersSvg(sq: Square, ctx: CellRenderCtx): string {
+  const {
+    workerPos,
+    partialBuilds,
+    steps,
+    coachThreats,
+    coachWins,
+    hintSquares,
+  } = ctx;
+  let svg = '';
+  if (workerPos === sq && blds.length === 0) {
+    svg += `<circle cx="${cx(sq)}" cy="${cy(sq)}" r="21" fill="none" stroke="var(--accent)" stroke-width="3" pointer-events="none"/>`;
+  }
+  if (partialBuilds.some((b) => b.at === sq)) {
+    svg += `<circle cx="${cx(sq)}" cy="${cy(sq)}" r="26" fill="none" stroke="var(--build)" stroke-width="3" opacity="0.8" pointer-events="none"/>`;
+  }
+  if (steps.some((st) => st.kind === 'move' && st.sq === sq)) {
+    svg += `<circle cx="${cx(sq)}" cy="${cy(sq)}" r="9" fill="var(--accent)" opacity="0.9" pointer-events="none"/>`;
+  }
+  if (steps.some((st) => st.kind !== 'move' && st.sq === sq)) {
+    svg += `<circle cx="${cx(sq)}" cy="${cy(sq)}" r="13" fill="none" stroke="var(--build)" stroke-width="4" stroke-dasharray="5 4" pointer-events="none"/>`;
+  }
+  if (coachThreats.has(sq)) {
+    svg += `<circle cx="${cx(sq)}" cy="${cy(sq)}" r="35" fill="none" stroke="var(--danger)" stroke-width="3.5" stroke-dasharray="8 5" pointer-events="none"/>`;
+  }
+  if (coachWins.has(sq)) {
+    svg += `<circle cx="${cx(sq)}" cy="${cy(sq)}" r="39" fill="none" stroke="var(--accent)" stroke-width="3.5" pointer-events="none"/>`;
+  }
+  if (hintSquares.has(sq)) {
+    svg += `<circle cx="${cx(sq)}" cy="${cy(sq)}" r="43" fill="none" stroke="var(--coach)" stroke-width="3" stroke-dasharray="3 4" pointer-events="none"/>`;
+  }
+  return svg;
+}
+
+function cellSvg(sq: Square, ctx: CellRenderCtx): string {
+  let svg = cellBaseSvg(sq, ctx.disp);
+  svg += cellWorkerSvg(ctx.state, sq, ctx.workerPos);
+  svg += cellMarkersSvg(sq, ctx);
+  svg += '</g>';
+  return svg;
+}
+
 function render(): void {
   const s = viewState();
   const { steps, finish } = uiOptions();
@@ -827,63 +955,25 @@ function render(): void {
       ? winningTurns(s).map((t) => t.path[t.path.length - 1])
       : [],
   );
-  const hintSquares = new Set<Square>();
-  if (hint) {
-    if (hint.turn.kind === 'place') {
-      for (const q of hint.turn.squares) hintSquares.add(q);
-    } else {
-      hintSquares.add(hint.turn.path[0]);
-      hintSquares.add(hint.turn.path[hint.turn.path.length - 1]);
-      for (const b of [...(hint.turn.preBuilds ?? []), ...hint.turn.builds])
-        hintSquares.add(b.at);
-    }
-  }
+  const hintSquares = hintSquaresFor(hint);
 
   // Heights as they'll look after this turn's builds so far.
   const disp = s.heights.slice();
   for (const b of partialBuilds) disp[b.at] = b.dome ? 4 : disp[b.at] + 1;
 
   const workerPos = path.length > 0 ? path[path.length - 1] : null;
+  const ctx: CellRenderCtx = {
+    state: s,
+    disp,
+    workerPos,
+    partialBuilds,
+    steps,
+    coachThreats,
+    coachWins,
+    hintSquares,
+  };
   let svg = '';
-  for (let sq = 0; sq < 25; sq++) {
-    svg += `<g class="cell" data-sq="${sq}" role="button" tabindex="0" aria-label="${squareName(sq)}">`;
-    svg += `<rect class="tile" x="${cx(sq) - 46}" y="${cy(sq) - 46}" width="92" height="92" rx="12" fill="var(--sand)"/>`;
-    svg += levelRects(sq, disp[sq]);
-    // faint coordinate label
-    svg += `<text x="${cx(sq) - 40}" y="${cy(sq) + 41}" font-size="10" fill="#8a8371" pointer-events="none">${squareName(sq)}</text>`;
-
-    const w = workerAt(s, sq);
-    if (w >= 0) {
-      const movedAway = path.length > 1 && sq === path[0];
-      svg += workerCircle(sq, ownerOf(w), movedAway);
-    }
-    if (sq === pendingPlace) svg += workerCircle(sq, s.player, true);
-    if (path.length > 1 && sq === workerPos)
-      svg += workerCircle(sq, s.player, true);
-
-    if (workerPos === sq && blds.length === 0) {
-      svg += `<circle cx="${cx(sq)}" cy="${cy(sq)}" r="21" fill="none" stroke="var(--accent)" stroke-width="3" pointer-events="none"/>`;
-    }
-    if (partialBuilds.some((b) => b.at === sq)) {
-      svg += `<circle cx="${cx(sq)}" cy="${cy(sq)}" r="26" fill="none" stroke="var(--build)" stroke-width="3" opacity="0.8" pointer-events="none"/>`;
-    }
-    if (steps.some((st) => st.kind === 'move' && st.sq === sq)) {
-      svg += `<circle cx="${cx(sq)}" cy="${cy(sq)}" r="9" fill="var(--accent)" opacity="0.9" pointer-events="none"/>`;
-    }
-    if (steps.some((st) => st.kind !== 'move' && st.sq === sq)) {
-      svg += `<circle cx="${cx(sq)}" cy="${cy(sq)}" r="13" fill="none" stroke="var(--build)" stroke-width="4" stroke-dasharray="5 4" pointer-events="none"/>`;
-    }
-    if (coachThreats.has(sq)) {
-      svg += `<circle cx="${cx(sq)}" cy="${cy(sq)}" r="35" fill="none" stroke="var(--danger)" stroke-width="3.5" stroke-dasharray="8 5" pointer-events="none"/>`;
-    }
-    if (coachWins.has(sq)) {
-      svg += `<circle cx="${cx(sq)}" cy="${cy(sq)}" r="39" fill="none" stroke="var(--accent)" stroke-width="3.5" pointer-events="none"/>`;
-    }
-    if (hintSquares.has(sq)) {
-      svg += `<circle cx="${cx(sq)}" cy="${cy(sq)}" r="43" fill="none" stroke="var(--coach)" stroke-width="3" stroke-dasharray="3 4" pointer-events="none"/>`;
-    }
-    svg += '</g>';
-  }
+  for (let sq = 0; sq < 25; sq++) svg += cellSvg(sq, ctx);
   boardEl.innerHTML = svg;
 
   finishEl.hidden = finish === null;
@@ -983,6 +1073,24 @@ function playerLabel(p: number): string {
   return g === 'none' ? name : `${name} (${GODS[g].name})`;
 }
 
+/** Status line while it's an AI seat's turn. */
+function aiStatusText(s: GameState, chip: string): string {
+  const level = AI_LEVELS[controllerToMove() as number];
+  const doing = s.phase === 'setup' ? 'placing workers' : 'thinking';
+  return `${chip} ${playerLabel(s.player)} — ${level.name} AI ${aiPaused ? 'paused' : `${doing}…`}`;
+}
+
+/** Labels for the actions the partial turn under construction can still take. */
+function turnStatusParts(steps: Step[], finish: MoveTurn | null): string[] {
+  const kinds = new Set(steps.map((st) => st.kind));
+  const parts: string[] = [];
+  if (kinds.has('move')) parts.push(path.length > 1 ? 'move again' : 'move');
+  if (kinds.has('pre')) parts.push('build before moving');
+  if (kinds.has('build')) parts.push(blds.length > 0 ? 'build again' : 'build');
+  if (finish) parts.push('finish the turn');
+  return parts;
+}
+
 function statusText(steps: Step[], finish: MoveTurn | null): string {
   const s = game.state;
   const chip = `<span class="chip p${colorOf(s.player) + 1}"></span>`;
@@ -990,23 +1098,14 @@ function statusText(steps: Step[], finish: MoveTurn | null): string {
     const w = s.winner!;
     return `<span class="chip p${colorOf(w) + 1}"></span> <strong>${playerLabel(w)} wins!</strong>`;
   }
-  if (controllerToMove() !== 'human') {
-    const level = AI_LEVELS[controllerToMove() as number];
-    const doing = s.phase === 'setup' ? 'placing workers' : 'thinking';
-    return `${chip} ${playerLabel(s.player)} — ${level.name} AI ${aiPaused ? 'paused' : `${doing}…`}`;
-  }
+  if (controllerToMove() !== 'human') return aiStatusText(s, chip);
   if (s.phase === 'setup') {
     const n = pendingPlace === null ? 1 : 2;
     return `${chip} ${playerLabel(s.player)}: place worker ${n} of 2`;
   }
   if (path.length === 0)
     return `${chip} ${playerLabel(s.player)} to move — select a worker`;
-  const kinds = new Set(steps.map((st) => st.kind));
-  const parts: string[] = [];
-  if (kinds.has('move')) parts.push(path.length > 1 ? 'move again' : 'move');
-  if (kinds.has('pre')) parts.push('build before moving');
-  if (kinds.has('build')) parts.push(blds.length > 0 ? 'build again' : 'build');
-  if (finish) parts.push('finish the turn');
+  const parts = turnStatusParts(steps, finish);
   if (parts.length === 0)
     return `${chip} ${playerLabel(s.player)} — no moves for this worker`;
   return `${chip} ${playerLabel(s.player)} — ${parts.join(', or ')}`;

@@ -1,6 +1,12 @@
 import { parseSquareName, squareName } from './board.ts';
 import { workerAt } from './state.ts';
-import type { BuildAction, GameState, MoveTurn, Turn } from './types.ts';
+import type {
+  BuildAction,
+  GameState,
+  MoveTurn,
+  PlaceTurn,
+  Turn,
+} from './types.ts';
 
 // SGN — Santorini Game Notation. Spec: docs/NOTATION.md.
 
@@ -34,18 +40,29 @@ function fmtBuild(scratch: Uint8Array, b: BuildAction): string {
  */
 export function parseTurn(state: GameState, str: string): Turn {
   const s = str.trim();
-  if (state.phase === 'setup') {
-    const parts = s.split(',');
-    if (parts.length !== 2) throw new Error(`invalid placement turn: ${str}`);
-    return {
-      kind: 'place',
-      squares: [
-        parseSquareName(parts[0].trim()),
-        parseSquareName(parts[1].trim()),
-      ],
-    };
-  }
+  return state.phase === 'setup'
+    ? parsePlacementTurn(s, str)
+    : parseMoveTurn(state, s, str);
+}
 
+function parsePlacementTurn(s: string, original: string): PlaceTurn {
+  const parts = s.split(',');
+  if (parts.length !== 2)
+    throw new Error(`invalid placement turn: ${original}`);
+  return {
+    kind: 'place',
+    squares: [
+      parseSquareName(parts[0].trim()),
+      parseSquareName(parts[1].trim()),
+    ],
+  };
+}
+
+function parseMoveTurn(
+  state: GameState,
+  s: string,
+  original: string,
+): MoveTurn {
   let i = 0;
   const scratch = state.heights.slice();
   const readSquare = (): number => {
@@ -81,7 +98,7 @@ export function parseTurn(state: GameState, str: string): Turn {
   }
   while (s[i] === '!' || s[i] === '?') i++;
   if (i !== s.length)
-    throw new Error(`unexpected trailing characters in turn: ${str}`);
+    throw new Error(`unexpected trailing characters in turn: ${original}`);
 
   const w = workerAt(state, path[0]);
   if (w < 0 || w >> 1 !== state.player) {
@@ -155,6 +172,17 @@ export function formatSGN(
     tokens.push(`${i / 2 + 1}.`, turns[i]);
     if (i + 1 < turns.length) tokens.push(turns[i + 1]);
   }
+  const lines = wrapLines(tokens);
+  return (
+    headerLines.join('\n') +
+    (headerLines.length ? '\n\n' : '') +
+    lines.join('\n') +
+    '\n'
+  );
+}
+
+/** Greedily packs space-joined tokens into lines of at most 80 chars. */
+function wrapLines(tokens: string[]): string[] {
   const lines: string[] = [];
   let line = '';
   for (const tok of tokens) {
@@ -166,10 +194,5 @@ export function formatSGN(
     }
   }
   if (line !== '') lines.push(line);
-  return (
-    headerLines.join('\n') +
-    (headerLines.length ? '\n\n' : '') +
-    lines.join('\n') +
-    '\n'
-  );
+  return lines;
 }

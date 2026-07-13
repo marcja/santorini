@@ -50,6 +50,33 @@ export interface PvEpochLoss {
   policy: number;
 }
 
+/** Per-batch gradient accumulators, reused across batches to avoid reallocation. */
+interface PvGrads {
+  gw1: Float64Array;
+  gb1: Float64Array;
+  gwv: Float64Array;
+  gbv: number;
+  /** Policy grads are sparse (legal actions only): per-row, keyed by action. Last slot of each row is the bias grad. */
+  gwpRows: Map<number, Float64Array>;
+  /** Scratch hidden-layer gradient, rebuilt per sample. */
+  dh: Float64Array;
+}
+
+function resetGrads(g: PvGrads): void {
+  g.gw1.fill(0);
+  g.gb1.fill(0);
+  g.gwv.fill(0);
+  g.gbv = 0;
+  g.gwpRows.clear();
+}
+
+function shuffleInPlace(order: number[], rand: () => number): void {
+  for (let i = order.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [order[i], order[j]] = [order[j], order[i]];
+  }
+}
+
 export class PolicyValueNet {
   readonly inputSize: number;
   readonly hiddenSize: number;
@@ -176,108 +203,30 @@ export class PolicyValueNet {
     const weightDecay = opts.weightDecay ?? 0;
     const policyWeight = opts.policyWeight ?? 1;
     const rand = mulberry32(opts.seed ?? 1);
-    const { w1, b1, wv, wp, bp, h, inputSize, hiddenSize } = this;
-
-    const gw1 = new Float64Array(w1.length);
-    const gb1 = new Float64Array(hiddenSize);
-    const gwv = new Float64Array(hiddenSize);
-    const dh = new Float64Array(hiddenSize);
-    // Policy grads are sparse (legal actions only) — accumulate per-row and
-    // remember which rows were touched this batch.
-    const gwpRows = new Map<number, Float64Array>();
     const order = samples.map((_, i) => i);
+    const grads = this.newGrads();
     const losses: PvEpochLoss[] = [];
 
     for (let e = 0; e < epochs; e++) {
-      for (let i = order.length - 1; i > 0; i--) {
-        const j = Math.floor(rand() * (i + 1));
-        [order[i], order[j]] = [order[j], order[i]];
-      }
+      shuffleInPlace(order, rand);
       let valueLossSum = 0;
       let policyLossSum = 0;
       let policySamples = 0;
       for (let start = 0; start < order.length; start += batchSize) {
         const end = Math.min(start + batchSize, order.length);
-        gw1.fill(0);
-        gb1.fill(0);
-        gwv.fill(0);
-        let gbv = 0;
-        gwpRows.clear();
-        for (let k = start; k < end; k++) {
-          const { x, y, actions, targets } = samples[order[k]];
-          const logit = this.valueForward(x); // fills this.h
-          const p = 1 / (1 + Math.exp(-logit));
-          valueLossSum -=
-            y * Math.log(Math.max(p, 1e-12)) +
-            (1 - y) * Math.log(Math.max(1 - p, 1e-12));
-          const dLogit = p - y;
-          gbv += dLogit;
-          dh.fill(0);
-          for (let j = 0; j < hiddenSize; j++) {
-            if (h[j] <= 0) continue;
-            gwv[j] += dLogit * h[j];
-            dh[j] = dLogit * wv[j];
-          }
-
-          if (actions.length > 0) {
-            policySamples++;
-            // Masked softmax over this sample's legal actions.
-            const zs = actions.map((a) => {
-              let z = bp[a];
-              const row = a * hiddenSize;
-              for (let j = 0; j < hiddenSize; j++) z += wp[row + j] * h[j];
-              return z;
-            });
-            const zMax = Math.max(...zs);
-            const exps = zs.map((z) => Math.exp(z - zMax));
-            const zSum = exps.reduce((s, v) => s + v, 0);
-            for (let m = 0; m < actions.length; m++) {
-              const pa = exps[m] / zSum;
-              const t = targets[m];
-              if (t > 0) policyLossSum -= t * Math.log(Math.max(pa, 1e-12));
-              const dz = policyWeight * (pa - t);
-              const a = actions[m];
-              let gRow = gwpRows.get(a);
-              if (gRow === undefined) {
-                gRow = new Float64Array(hiddenSize + 1); // last slot = bias grad
-                gwpRows.set(a, gRow);
-              }
-              gRow[hiddenSize] += dz;
-              const row = a * hiddenSize;
-              for (let j = 0; j < hiddenSize; j++) {
-                if (h[j] <= 0) continue;
-                gRow[j] += dz * h[j];
-                dh[j] += dz * wp[row + j];
-              }
-            }
-          }
-
-          for (let j = 0; j < hiddenSize; j++) {
-            if (h[j] <= 0 || dh[j] === 0) continue;
-            const row = j * inputSize;
-            for (let i = 0; i < inputSize; i++) gw1[row + i] += dh[j] * x[i];
-            gb1[j] += dh[j];
-          }
-        }
-
-        const step = lr / (end - start);
-        for (let i = 0; i < w1.length; i++) w1[i] -= step * gw1[i];
-        for (let j = 0; j < hiddenSize; j++) {
-          b1[j] -= step * gb1[j];
-          wv[j] -= step * gwv[j];
-        }
-        this.bv -= step * gbv;
-        for (const [a, gRow] of gwpRows) {
-          const row = a * hiddenSize;
-          for (let j = 0; j < hiddenSize; j++) wp[row + j] -= step * gRow[j];
-          bp[a] -= step * gRow[hiddenSize];
-        }
-        if (weightDecay > 0) {
-          const decay = 1 - lr * weightDecay;
-          for (let i = 0; i < w1.length; i++) w1[i] *= decay;
-          for (let j = 0; j < hiddenSize; j++) wv[j] *= decay;
-          for (let i = 0; i < wp.length; i++) wp[i] *= decay;
-        }
+        const batch = this.trainBatch(
+          samples,
+          order,
+          start,
+          end,
+          grads,
+          lr,
+          weightDecay,
+          policyWeight,
+        );
+        valueLossSum += batch.valueLoss;
+        policyLossSum += batch.policyLoss;
+        policySamples += batch.policySamples;
       }
       losses.push({
         value: valueLossSum / order.length,
@@ -285,6 +234,142 @@ export class PolicyValueNet {
       });
     }
     return losses;
+  }
+
+  private newGrads(): PvGrads {
+    return {
+      gw1: new Float64Array(this.w1.length),
+      gb1: new Float64Array(this.hiddenSize),
+      gwv: new Float64Array(this.hiddenSize),
+      gbv: 0,
+      gwpRows: new Map<number, Float64Array>(),
+      dh: new Float64Array(this.hiddenSize),
+    };
+  }
+
+  /** One SGD step: accumulate every sample's gradient, then apply it. */
+  private trainBatch(
+    samples: PvSample[],
+    order: number[],
+    start: number,
+    end: number,
+    grads: PvGrads,
+    lr: number,
+    weightDecay: number,
+    policyWeight: number,
+  ): { valueLoss: number; policyLoss: number; policySamples: number } {
+    resetGrads(grads);
+    let valueLoss = 0;
+    let policyLoss = 0;
+    let policySamples = 0;
+    for (let k = start; k < end; k++) {
+      const sample = samples[order[k]];
+      valueLoss += this.accumulateValueGrad(sample, grads);
+      if (sample.actions.length > 0) {
+        policyLoss += this.accumulatePolicyGrad(sample, grads, policyWeight);
+        policySamples++;
+      }
+      this.accumulateHiddenGrad(sample.x, grads);
+    }
+    const step = lr / (end - start);
+    this.applyGradStep(grads, step);
+    if (weightDecay > 0) this.applyWeightDecay(1 - lr * weightDecay);
+    return { valueLoss, policyLoss, policySamples };
+  }
+
+  /** Value branch: forward+backward for one sample. Fills `this.h`, resets `grads.dh`. Returns its BCE loss. */
+  private accumulateValueGrad(sample: PvSample, grads: PvGrads): number {
+    const { wv, h, hiddenSize } = this;
+    const { x, y } = sample;
+    const logit = this.valueForward(x); // fills this.h
+    const p = 1 / (1 + Math.exp(-logit));
+    const loss = -(
+      y * Math.log(Math.max(p, 1e-12)) +
+      (1 - y) * Math.log(Math.max(1 - p, 1e-12))
+    );
+    const dLogit = p - y;
+    grads.gbv += dLogit;
+    grads.dh.fill(0);
+    for (let j = 0; j < hiddenSize; j++) {
+      if (h[j] <= 0) continue;
+      grads.gwv[j] += dLogit * h[j];
+      grads.dh[j] = dLogit * wv[j];
+    }
+    return loss;
+  }
+
+  /** Policy branch: masked softmax + backward over one sample's legal actions. Adds into `grads.dh`. Returns its CE loss. */
+  private accumulatePolicyGrad(
+    sample: PvSample,
+    grads: PvGrads,
+    policyWeight: number,
+  ): number {
+    const { bp, wp, h, hiddenSize } = this;
+    const { actions, targets } = sample;
+    const zs = actions.map((a) => {
+      let z = bp[a];
+      const row = a * hiddenSize;
+      for (let j = 0; j < hiddenSize; j++) z += wp[row + j] * h[j];
+      return z;
+    });
+    const zMax = Math.max(...zs);
+    const exps = zs.map((z) => Math.exp(z - zMax));
+    const zSum = exps.reduce((s, v) => s + v, 0);
+    let loss = 0;
+    for (let m = 0; m < actions.length; m++) {
+      const pa = exps[m] / zSum;
+      const t = targets[m];
+      if (t > 0) loss -= t * Math.log(Math.max(pa, 1e-12));
+      const dz = policyWeight * (pa - t);
+      const a = actions[m];
+      let gRow = grads.gwpRows.get(a);
+      if (gRow === undefined) {
+        gRow = new Float64Array(hiddenSize + 1); // last slot = bias grad
+        grads.gwpRows.set(a, gRow);
+      }
+      gRow[hiddenSize] += dz;
+      const row = a * hiddenSize;
+      for (let j = 0; j < hiddenSize; j++) {
+        if (h[j] <= 0) continue;
+        gRow[j] += dz * h[j];
+        grads.dh[j] += dz * wp[row + j];
+      }
+    }
+    return loss;
+  }
+
+  /** Backprop `grads.dh` into the shared layer's gradient. */
+  private accumulateHiddenGrad(x: Float32Array, grads: PvGrads): void {
+    const { h, inputSize, hiddenSize } = this;
+    for (let j = 0; j < hiddenSize; j++) {
+      if (h[j] <= 0 || grads.dh[j] === 0) continue;
+      const row = j * inputSize;
+      for (let i = 0; i < inputSize; i++)
+        grads.gw1[row + i] += grads.dh[j] * x[i];
+      grads.gb1[j] += grads.dh[j];
+    }
+  }
+
+  private applyGradStep(grads: PvGrads, step: number): void {
+    const { w1, b1, wv, wp, bp, hiddenSize } = this;
+    for (let i = 0; i < w1.length; i++) w1[i] -= step * grads.gw1[i];
+    for (let j = 0; j < hiddenSize; j++) {
+      b1[j] -= step * grads.gb1[j];
+      wv[j] -= step * grads.gwv[j];
+    }
+    this.bv -= step * grads.gbv;
+    for (const [a, gRow] of grads.gwpRows) {
+      const row = a * hiddenSize;
+      for (let j = 0; j < hiddenSize; j++) wp[row + j] -= step * gRow[j];
+      bp[a] -= step * gRow[hiddenSize];
+    }
+  }
+
+  private applyWeightDecay(decay: number): void {
+    const { w1, wv, wp } = this;
+    for (let i = 0; i < w1.length; i++) w1[i] *= decay;
+    for (let j = 0; j < wv.length; j++) wv[j] *= decay;
+    for (let i = 0; i < wp.length; i++) wp[i] *= decay;
   }
 
   /** Plain-array params for JSON, rounded to 6 decimals to keep files small. */

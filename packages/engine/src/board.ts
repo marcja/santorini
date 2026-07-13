@@ -11,26 +11,35 @@ export const colOf = (sq: Square): number => sq % SIZE;
 export const rowOf = (sq: Square): number => Math.floor(sq / SIZE);
 export const square = (col: number, row: number): Square => row * SIZE + col;
 
-/** Precomputed 8-neighborhoods. */
-export const NEIGHBORS: readonly (readonly Square[])[] = (() => {
-  const out: Square[][] = [];
-  for (let sq = 0; sq < CELLS; sq++) {
-    const c = colOf(sq);
-    const r = rowOf(sq);
-    const n: Square[] = [];
-    for (let dr = -1; dr <= 1; dr++) {
-      for (let dc = -1; dc <= 1; dc++) {
-        if (dc === 0 && dr === 0) continue;
-        const cc = c + dc;
-        const rr = r + dr;
-        if (cc >= 0 && cc < SIZE && rr >= 0 && rr < SIZE)
-          n.push(square(cc, rr));
-      }
-    }
-    out.push(n);
+/** The 8 compass offsets, excluding (0, 0), in the original row-major scan order. */
+const DELTAS: readonly (readonly [number, number])[] = [
+  [-1, -1],
+  [0, -1],
+  [1, -1],
+  [-1, 0],
+  [1, 0],
+  [-1, 1],
+  [0, 1],
+  [1, 1],
+];
+
+function neighborsOf(sq: Square): Square[] {
+  const c = colOf(sq);
+  const r = rowOf(sq);
+  const n: Square[] = [];
+  for (const [dc, dr] of DELTAS) {
+    const cc = c + dc;
+    const rr = r + dr;
+    if (cc >= 0 && cc < SIZE && rr >= 0 && rr < SIZE) n.push(square(cc, rr));
   }
-  return out;
-})();
+  return n;
+}
+
+/** Precomputed 8-neighborhoods. */
+export const NEIGHBORS: readonly (readonly Square[])[] = Array.from(
+  { length: CELLS },
+  (_, sq) => neighborsOf(sq),
+);
 
 /**
  * The space "one space straight backwards" when a worker on `to` is pushed
