@@ -91,3 +91,25 @@ already learned:
   write a scratchpad differential script that exercises it broadly and
   compare exact output pre/post-refactor — don't rely on unit tests alone,
   and don't trust a refactor "looks obviously equivalent" by inspection.
+- Adding Hermes (PR #37): an adversarial rules-review subagent caught a real
+  correctness bug that survived a full green test suite (55/55), a manual
+  line-by-line re-review, and my own scratch probe scripts. I'd implemented
+  Hermes's two-worker flat-move bonus with a "try both move orderings"
+  heuristic and *documented it myself* as only missing "exotic mutual
+  swaps." The reviewer disproved that: on a completely ordinary open-board
+  position (two workers two squares apart, no domes), `legalTurns()`
+  returned ~4800 turns and *none* was the legal worker-swap turn — not
+  exotic at all, just a blind spot in my own confidence about my own code.
+  Fixed by replacing the heuristic with a true joint-state BFS. Lesson: for
+  any engine **logic** change — a new god/hero/expansion power, or an
+  optimization that touches `movegen.ts`/`apply.ts` semantics (not just
+  performance-neutral refactors, which the fuzz-testing entry above
+  covers) — run a dynamic Workflow with an adversarial rules-correctness
+  reviewer (against `docs/reference/rulebook.md`, instructed to actively
+  try to construct a counterexample per interaction, not just read the code
+  and agree) and an adversarial implementation-quality reviewer, then a
+  fixer, *before* considering the work done. Do this even when — especially
+  when — your own manual testing already looks clean; that's exactly the
+  state this bug was hiding in. Independently re-verify whatever the fixer
+  reports rather than trusting its summary (re-read the diff, rerun
+  typecheck/lint/tests yourself, reproduce the fixed scenario from scratch).

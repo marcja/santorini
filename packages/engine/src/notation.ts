@@ -19,6 +19,7 @@ export function formatTurn(state: GameState, t: Turn): string {
   const scratch = state.heights.slice();
   let out = '';
   for (const b of t.preBuilds ?? []) out += fmtBuild(scratch, b);
+  if (t.otherPath) out += `${t.otherPath.map(squareName).join('-')}~`;
   out += t.path.map(squareName).join('-');
   for (const b of t.builds) out += fmtBuild(scratch, b);
   if (t.win) out += '#';
@@ -58,11 +59,16 @@ function parsePlacementTurn(s: string, original: string): PlaceTurn {
   };
 }
 
-function parseMoveTurn(
-  state: GameState,
-  s: string,
-  original: string,
-): MoveTurn {
+interface ScannedMoveTurn {
+  preBuilds: BuildAction[];
+  otherPath?: number[];
+  path: number[];
+  builds: BuildAction[];
+  win: boolean;
+}
+
+/** Tokenizes a move-turn string into its pieces, without resolving which worker moved. */
+function scanMoveTurn(state: GameState, s: string): ScannedMoveTurn {
   let i = 0;
   const scratch = state.heights.slice();
   const readSquare = (): number => {
@@ -81,13 +87,23 @@ function parseMoveTurn(
     scratch[at] = dome ? 4 : scratch[at] + 1;
     return { at, dome };
   };
+  const readChain = (): number[] => {
+    const chain = [readSquare()];
+    while (s[i] === '-') {
+      i++;
+      chain.push(readSquare());
+    }
+    return chain;
+  };
 
   const preBuilds: BuildAction[] = [];
   while (s[i] === '^') preBuilds.push(readBuild());
-  const path: number[] = [readSquare()];
-  while (s[i] === '-') {
+  let path = readChain();
+  let otherPath: number[] | undefined;
+  if (s[i] === '~') {
     i++;
-    path.push(readSquare());
+    otherPath = path;
+    path = readChain();
   }
   const builds: BuildAction[] = [];
   while (s[i] === '^') builds.push(readBuild());
@@ -98,12 +114,22 @@ function parseMoveTurn(
   }
   while (s[i] === '!' || s[i] === '?') i++;
   if (i !== s.length)
-    throw new Error(`unexpected trailing characters in turn: ${original}`);
+    throw new Error(`unexpected trailing characters in turn: ${s}`);
+
+  return { preBuilds, otherPath, path, builds, win };
+}
+
+function parseMoveTurn(
+  state: GameState,
+  s: string,
+  original: string,
+): MoveTurn {
+  const { preBuilds, otherPath, path, builds, win } = scanMoveTurn(state, s);
 
   const w = workerAt(state, path[0]);
   if (w < 0 || w >> 1 !== state.player) {
     throw new Error(
-      `player ${state.player + 1} has no worker on ${squareName(path[0])}`,
+      `player ${state.player + 1} has no worker on ${squareName(path[0])} (${original})`,
     );
   }
   const turn: MoveTurn = {
@@ -114,6 +140,7 @@ function parseMoveTurn(
     win,
   };
   if (preBuilds.length > 0) turn.preBuilds = preBuilds;
+  if (otherPath) turn.otherPath = otherPath;
   return turn;
 }
 
@@ -132,7 +159,8 @@ export function turnKey(t: Turn): string {
       .map((b) => String(b.at).padStart(2, '0') + (b.dome ? 'D' : ''))
       .sort()
       .join(',');
-  return `M${t.path.join('-')}|${key(t.preBuilds ?? [])}|${key(t.builds)}`;
+  const other = (t.otherPath ?? []).join('-');
+  return `M${other}~${t.path.join('-')}|${key(t.preBuilds ?? [])}|${key(t.builds)}`;
 }
 
 // --- Game-level SGN ---

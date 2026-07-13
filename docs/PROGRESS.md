@@ -1,6 +1,6 @@
 # Progress
 
-_Last updated: 2026-07-12 (session 12)_
+_Last updated: 2026-07-12 (session 13)_
 
 ## Done
 
@@ -365,6 +365,154 @@ _Last updated: 2026-07-12 (session 12)_
   lint/format + hooks (PR3), complexity visibility (PR4), complexity cleanup
   (PR5), complexity enforcement (PR6) — is complete end to end.
 
+- **(this session) Hermes implemented — the engine now has all 10 simple
+  gods.** Hermes ("Your Turn: If your Workers do not move up or down, they
+  may each move any number of times (even zero), and then either builds")
+  was deferred at Deliverable 1 because it needed a design pass: it's the
+  first god whose turn can move the worker that *isn't* the one selected/
+  built with, breaking the single-worker-path shape every other `MoveTurn`
+  (and every consumer of it) assumed.
+  - **Engine (`packages/engine`):** added `GodConfig.flatMoveBothWorkers`
+    and `MoveTurn.otherPath` (present only when the non-building worker
+    actually moved). `movegen.ts`'s `tryHermesTurns` computes every jointly-
+    reachable pair of final squares via `hermesJointReachable`, a BFS over
+    the joint `(worker0Square, worker1Square)` state space (bounded at
+    25×25), deduping by resulting board state. `apply.ts` jumps each worker
+    straight to its final square rather than stepping (Hermes never
+    displaces anyone or changes height, and movegen may have explored the
+    two workers' paths in an interleaved order, so replaying a fixed step
+    order against the real board could see a transiently-occupied square —
+    caught by the existing random-playout fuzz suite, which throws exactly
+    this until fixed). `notation.ts` adds a `~`-prefixed SGN segment for the
+    other worker's path (documented in `docs/NOTATION.md`); `turnKey`
+    updated to include it.
+  - **Correctness fix (same session, found by an adversarial rules-review
+    subagent — see below):** the first implementation of the flat/bonus
+    branch used a two-ordering heuristic ("worker A repositions fully, then
+    worker B" and the reverse) instead of a true joint BFS, and was
+    documented as only missing "an exotic mutual-swap." An adversarial
+    review proved that framing wrong: on a fully open board with two Hermes
+    workers two squares apart (an entirely ordinary mid-game shape, not a
+    contrived edge case), `legalTurns()` returned ~4,835 turns and *none*
+    of them was the full worker swap, even though it's reachable via 4
+    legal micro-steps — neither ordering can ever have a worker step onto
+    the other's *original* square while it's still occupied. Fixed by
+    replacing the two-ordering heuristic with `hermesJointReachable`, which
+    also came out ~60% faster (578 → 922 `legalTurns()` calls/s on an
+    open-board benchmark) since it no longer reruns a fresh BFS per landing
+    square. Verified independently (not just by the fixer's own report):
+    read the full diff, reasoned through the joint-BFS logic by hand, and
+    reproduced the swap scenario myself from scratch after the fix landed —
+    confirmed present, and that it applies to the correct final positions.
+  - **Correction (same session, caught by Marc):** the first pass
+    misread "Your Turn: If your Workers do not move up or down, they may
+    each move any number of times... and then either builds" as *replacing*
+    the normal move entirely (flat-only, always). It's actually a
+    conditional bonus — same "if...then" grammar as Prometheus's "If your
+    Worker does not move up, it may build both before and after moving,"
+    which was already correctly implemented as optional. Fixed: `moveTurns`
+    now always generates the normal single-step move first (so a Hermes
+    turn can still climb one level, descend any amount in one step, and
+    win by reaching level 3 — none of that was reachable before the fix),
+    then adds the flat/both-worker bonus turns on top, deduped by
+    resulting board state against the normal turns (they overlap exactly
+    when one worker takes a single flat step and the other stays put).
+    This also surfaced a second bug in `apply.ts`: the "jump straight to
+    final square" fast path was gated on the god flag (true for every
+    Hermes turn), so a winning normal move would route through it and
+    silently *not* end the game (no `t.win` check there) — fixed by gating
+    on `MoveTurn.otherPath` presence instead, which is the only case that
+    actually needs it. Reproduced the win-swallowing bug in isolation
+    before landing the fix, to confirm the new regression test
+    (`applyTurn` + phase/winner assertions, not just checking `t.win`)
+    actually catches it.
+  - **Tests:** `Hermes` describe block in `packages/engine/test/
+    gods.test.ts`, 6 tests: normal up-move can still win (applies the turn
+    and checks `phase`/`winner`, not just the `win` flag) and normal
+    down-move is still legal; moving up/down forfeits the bonus (no
+    chaining, no second-worker move) for that turn; chained flat moves
+    incl. zero-move; either worker building including one that never
+    moved; an exhaustively enumerated closed-corridor position (now
+    includes the worker's normal down-moves alongside the flat bonus);
+    full worker swap via interleaved repositioning (added after the
+    joint-BFS fix, reproduces the adversarial review's scenario directly).
+    `notation.test.ts` and `playout.test.ts` gained explicit Hermes/
+    Hermes-vs-Hermes coverage too — SGN round-trip through `Game.toSGN`/
+    `fromSGN` on a game that actually contains an `otherPath` (`~`) turn,
+    and 10-seed random-playout invariants — after an adversarial quality
+    review found the existing fuzz never exercised Hermes at the notation
+    layer or same-god-vs-itself (the highest-complexity path through
+    `tryHermesTurns`/`applyHermesMove`) at all. `playout.test.ts`'s
+    existing fuzz (every god vs base, all god pairings) picks Hermes up
+    automatically via `GOD_IDS` — this is what caught the apply-order bug
+    above. 55/55 engine tests green, typecheck and lint (including the
+    `packages/engine`-scoped cognitive-complexity=10 limit — `applyMove`/
+    `parseMoveTurn`/`hermesJointReachable` all needed splitting into
+    smaller helpers to stay under it) clean across the whole repo.
+  - **Adversarial review workflow (this session):** ran a dynamic Workflow
+    with two parallel adversarial subagent reviewers (rules-correctness
+    against `docs/reference/rulebook.md`; implementation quality) followed
+    by a fixer subagent. First attempt: 2 of 3 agents hit the account's
+    monthly spend limit (rules reviewer and fixer both failed outright —
+    an empty `rulesFindings` array from a failed agent is not the same as
+    "found nothing," and was reported to Marc as such rather than as a
+    clean bill of health). After the limit reset, resumed the same run
+    (`Workflow` with `resumeFromRunId`, replaying the completed quality
+    reviewer's result from cache) — all 3 agents completed. Quality
+    reviewer found the Hermes swap-turn coverage gap (`notation.test.ts`/
+    `playout.test.ts`, above) plus the `movegen.ts` performance concern and
+    a duplicated build-key helper (fixed: extracted `buildsKey()`, used by
+    both `turnResultKey` and `emitHermesBuildsFor`). Rules reviewer found
+    the joint-BFS bug (above) — its most consequential finding across both
+    runs. Independently re-verified the fixer's diff by hand afterward
+    (read the full `movegen.ts` rewrite, reasoned through the BFS logic,
+    reran typecheck/lint/`npm test`, and reproduced the swap scenario from
+    scratch myself) rather than taking the fixer's summary at face value.
+  - **`apps/web` gap (not fixed this session, scoped out on purpose):** the
+    click-based turn-input UI (`compatible`/`stepsFor`/`uiOptions` in
+    `main.ts`) is generic by prefix-matching clicks against `MoveTurn.path`/
+    `builds` only — it has no way to input `otherPath`. Shipping Hermes
+    there as-is would silently default the second worker to whatever
+    `legalTurns()` happens to return first, ignoring player intent. Gated
+    off via `SELECTABLE_GOD_IDS` (excludes `hermes` from both the free-pick
+    dropdowns and the draft grid) rather than left broken; verified by
+    playing a full base-game turn through the in-app browser and confirming
+    Hermes is absent from both pickers with no console errors. Tried to file
+    a tracking GitHub issue for this and for updating issue #26 (which cited
+    "9 of 10 simple gods" as the engine's simple-god coverage, now stale) —
+    blocked by the auto-mode permission classifier (unilateral external
+    issue creation needs explicit user sign-off); flagged to the user
+    instead. `packages/ai`/`apps/trainer` need no changes: neither
+    references `GOD_IDS`, and the existing god-blindness issues (#17–#27)
+    already generically cover "AI doesn't understand god X" — Hermes just
+    joins that same tracked gap, nothing new or crash-prone (`coach.ts`/
+    `policy.ts`'s `path[path.length - 1]` and `greedy.ts`/`mcts.ts`'s
+    `t.win` checks are all safe on a length-1 path / always-false win).
+  - Filed [#35](https://github.com/marcja/santorini/issues/35) for the
+    apps/web Hermes gap; updated
+    [#26](https://github.com/marcja/santorini/issues/26)'s stale "9 of 10"
+    claim.
+- **(this session) Investigated a suspected Pan bug — implementation
+  confirmed correct, one new regression test added.** Marc recalled a
+  possible incompleteness in Pan ("wins by moving down 2+ levels").
+  Checked: rulebook text match, all 13 reachable from/to height-delta
+  combinations (0–3, exhaustive probe script) against expected win/no-win,
+  and cross-referenced the official BoardGameArena implementation doc
+  (`"if your worker moves down two or more levels, you win"`, confirms
+  level-3→level-1 wins) — all matched. The one interaction worth real
+  scrutiny — "forced is not moved" (rulebook General Rules) applied to
+  Pan specifically — was already handled correctly: Apollo's swap can
+  geometrically never force a 2+ level descent (the swapper's own move
+  legality caps the vacated square within 1 level of the target), and
+  Minotaur's push (unrestricted "any level" landing, so it *can* force a
+  2+ descent) correctly does not trigger Pan's win, since `isWinStep` is
+  only ever evaluated for the mover's own step, never for a displaced
+  worker. That specific interaction (Pan forced down 2+ by an opponent's
+  Minotaur push) had zero test coverage before this session — added as a
+  permanent regression test in `packages/engine/test/gods.test.ts` (now
+  51/51 engine tests green) so a future refactor can't silently regress it.
+  No code change to Pan itself was needed.
+
 ## Next
 
 **Sequencing decision (2026-07-11):** cap AI training at a bounded
@@ -400,6 +548,12 @@ rungs (random 0 / mcts(200) 657 / greedy 808 / gen-003 903).
    parent. Watch in-browser Expert latency (PUCT pays a policy forward per
    expansion, roughly 2× per move — fine today); a web worker becomes
    worthwhile if budgets rise ~10×.
+8. Engine's simple-god set is now complete (10/10, this session). Two
+   follow-ups worth filing as GitHub issues (blocked this session — see
+   Done above): apps/web needs a two-worker move UI before Hermes can be
+   unhidden from the pickers; issue #26 should be updated to say 10/10
+   engine coverage instead of 9/10. Advanced gods (index 11–30) are the
+   next engine-side milestone per issue #26's suggested direction.
 
 ## Decisions / notes
 

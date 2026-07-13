@@ -45,4 +45,13 @@ describe('random playout invariants', () => {
       }
     }
   });
+
+  // Hermes vs Hermes isn't real-play matchmaking (see above), but it's the
+  // one god whose movegen is order/interleaving-sensitive (both players
+  // simultaneously exploring flat repositioning turns via the same joint
+  // BFS) — cover it explicitly so a future movegen/apply/notation refactor
+  // can't silently break it unnoticed.
+  it('hermes vs hermes', { timeout: 60_000 }, () => {
+    for (let seed = 1; seed <= 10; seed++) checkInvariants(['hermes', 'hermes'], seed);
+  });
 });

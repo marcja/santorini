@@ -35,6 +35,16 @@ in the order placed — worker index 0 first: `b2,c3`.
 
 - Movement: `from-to`, e.g. `c3-c2`. Multi-step moves (Artemis, Triton, …)
   chain: `c3-c2-d1`.
+- Hermes: a normal single-step up/down move (`c3-c4`, can even win) is
+  still legal. Only if it forgoes moving up or down at all does it get the
+  bonus: both workers may reposition (flat only, any number of steps, even
+  zero) before the build. The *other* worker's path (if it moved) comes
+  first, suffixed `~`, then the building worker's path as normal:
+  `b2-b3~c3-c2^c1` (other worker b2→b3, building worker c3→c2, builds
+  c1). If the building worker doesn't move, its "path" is just its square:
+  `b2-b3~c3^c1`. If only the building worker moves (or it's a normal
+  up/down move), there's no `~` segment at all — it looks like a normal
+  turn.
 - Build: `^` + square, e.g. `^c1`. Extra builds (Demeter, Hephaestus, …)
   append: `^c1^d1`. Hephaestus's double block on one square is written twice:
   `^c1^c1`.

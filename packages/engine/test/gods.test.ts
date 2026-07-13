@@ -241,6 +241,28 @@ describe('Pan (also wins by moving down 2+ levels)', () => {
     expect(down1.win).toBe(false);
     expect(findTurn(s, 'c3-c4#')).toBeDefined();
   });
+
+  it('does not win when forced down 2+ by an opponent (forced is not moved)', () => {
+    // Minotaur pushes "at any level" (no height restriction on landing), so
+    // it can force a Pan worker down 2+ levels — that must NOT win for Pan.
+    const s = pos({
+      heights: { b3: 2, c3: 2, d3: 0 },
+      p0: ['c3', 'a1'],
+      p1: ['b3', 'e4'],
+      gods: ['pan', 'minotaur'],
+      player: 1,
+    });
+    const push = legalTurns(s).find(
+      (t): t is MoveTurn =>
+        t.kind === 'move' && t.path[0] === sq('b3') && t.path[1] === sq('c3'),
+    );
+    expect(push).toBeDefined();
+    expect(push!.win).toBe(false);
+    const after = applyTurn(s, push!);
+    expect(after.phase).toBe('play');
+    expect(after.winner).toBeNull();
+    expect(workerAt(after, sq('d3'))).toBe(0); // pan worker forced down 2 levels
+  });
 });
 
 describe('Prometheus (build before and after when not moving up)', () => {
@@ -264,5 +286,158 @@ describe('Prometheus (build before and after when not moving up)', () => {
     }
     // without the pre-build, moving up is still allowed
     expect(findTurn(s, 'c3-c4^c3')).toBeDefined();
+  });
+});
+
+describe('Hermes (flat multi-move bonus when forgoing up/down; normal move otherwise)', () => {
+  // "If your Workers do not move up or down, they may each move any number
+  // of times" is a bonus on top of the normal turn (same "if...then" shape
+  // as Prometheus's pre-build), not a replacement for it: moving one worker
+  // up or down as normal, once, is always still a legal Hermes turn — it
+  // just forgoes the flat/both-worker bonus for that turn.
+
+  it('may still move up one level (or down any amount) normally, and win that way', () => {
+    const up = pos({
+      heights: { c3: 2, c4: 3 },
+      p0: ['c3', 'a1'],
+      p1: ['e5', 'e4'],
+      gods: ['hermes', 'none'],
+    });
+    const t = findTurn(up, 'c3-c4#') as MoveTurn;
+    expect(t).toBeDefined();
+    expect(t.win).toBe(true);
+    expect(t.otherPath).toBeUndefined();
+    const after = applyTurn(up, t);
+    expect(after.phase).toBe('over');
+    expect(after.winner).toBe(0);
+
+    const down = pos({
+      heights: { c3: 3 }, // c4 defaults to 0: a single-step move down 3
+      p0: ['c3', 'a1'],
+      p1: ['e5', 'e4'],
+      gods: ['hermes', 'none'],
+    });
+    expect(findTurn(down, 'c3-c4^c3')).toBeDefined();
+  });
+
+  it('moving up or down forfeits the flat/second-worker bonus for that turn', () => {
+    const s = pos({
+      heights: { c3: 1, c4: 2 },
+      p0: ['c3', 'a1'],
+      p1: ['e5', 'e4'],
+      gods: ['hermes', 'none'],
+    });
+    for (const t of legalTurns(s).map((x) => x as MoveTurn)) {
+      const climbed = s.heights[t.path[t.path.length - 1]] !== s.heights[t.path[0]];
+      if (!climbed) continue;
+      expect(t.path.length).toBe(2); // single step, no flat chaining
+      expect(t.otherPath).toBeUndefined(); // no second-worker move
+    }
+    // and the up-move itself is still on offer alongside the bonus turns
+    expect(findTurn(s, 'c3-c4^c3')).toBeDefined();
+  });
+
+  // A 3-cell corridor c3-b3-a3 (all level 0) walled off by domes on every
+  // other neighbor, so worker 0's flat-move options are fully enumerable.
+  const corridor = () =>
+    pos({
+      heights: {
+        a2: 4,
+        a4: 4,
+        b2: 4,
+        b4: 4,
+        c2: 4,
+        c4: 4,
+        d2: 4,
+        d3: 4,
+        d4: 4,
+        e5: 2,
+      },
+      p0: ['c3', 'e5'],
+      p1: ['d1', 'e1'],
+      gods: ['hermes', 'none'],
+    });
+
+  it('may chain any number of flat steps, including zero, before building', () => {
+    const s = corridor();
+    expect(findTurn(s, 'c3^b3')).toBeDefined(); // zero moves
+    expect(findTurn(s, 'c3-b3^a3')).toBeDefined(); // one step
+    expect(findTurn(s, 'c3-b3^c3')).toBeDefined();
+    expect(findTurn(s, 'c3-b3-a3^b3')).toBeDefined(); // two steps, corridor dead-ends
+    expect(turnStrings(s).some((t) => t.startsWith('c3-b3-a3-'))).toBe(false);
+  });
+
+  it('either worker may build, including one that never moved', () => {
+    const s = corridor();
+    // worker 1 (e5) builds while worker 0 (c3) stays put: no otherPath segment.
+    expect(findTurn(s, 'e5^d5')).toBeDefined();
+    expect(findTurn(s, 'e5^e4')).toBeDefined();
+    // worker 1 builds after worker 0 relocated: otherPath segment records it.
+    const t = findTurn(s, 'c3-b3~e5^d5') as MoveTurn;
+    expect(t).toBeDefined();
+    expect(t.worker).toBe(1);
+    expect(t.otherPath).toEqual([sq('c3'), sq('b3')]);
+    const after = applyTurn(s, t);
+    expect(workerAt(after, sq('b3'))).toBe(0);
+    expect(workerAt(after, sq('e5'))).toBe(1);
+    expect(after.heights[sq('d5')]).toBe(1);
+  });
+
+  it('generates exactly the enumerable turn set for the walled corridor', () => {
+    // Worker 0 (c3) is fully walled into the flat corridor by domes, so its
+    // only options are the flat bonus. Worker 1 (e5, level 2) has no flat
+    // neighbors (all domed or ground level), but per the *normal* move it
+    // may still step down to d5 or e4 (unrestricted descent) and build.
+    expect(turnStrings(corridor())).toEqual(
+      [
+        'c3^b3',
+        'c3-b3^a3',
+        'c3-b3^c3',
+        'c3-b3-a3^b3',
+        'e5^d5',
+        'e5^e4',
+        'c3-b3~e5^d5',
+        'c3-b3~e5^e4',
+        'c3-b3-a3~e5^d5',
+        'c3-b3-a3~e5^e4',
+        'e5-d5^c5',
+        'e5-d5^e4',
+        'e5-d5^e5',
+        'e5-e4^d5',
+        'e5-e4^e3',
+        'e5-e4^e5',
+      ].sort(),
+    );
+  });
+
+  it('can fully swap two workers via interleaved flat repositioning', () => {
+    // b2 and d2 are two squares apart on an open board. A full swap (worker
+    // 0 ending at d2, worker 1 ending at b2) is only reachable by
+    // interleaving each worker's steps (e.g. b2-c1, d2-c2, c1-d2, c2-b2) —
+    // no fixed "worker A repositions fully, then worker B" ordering can
+    // reach it, since each worker must step onto the other's *original*
+    // square only after it has been vacated.
+    const s = pos({
+      p0: ['b2', 'd2'],
+      p1: ['a5', 'e5'],
+      gods: ['hermes', 'none'],
+    });
+    const finalSquares = (t: MoveTurn): [number, number] => {
+      const builderAt = t.path[t.path.length - 1];
+      const otherAt = t.otherPath
+        ? t.otherPath[t.otherPath.length - 1]
+        : s.workers[t.worker === 0 ? 1 : 0];
+      return t.worker === 0 ? [builderAt, otherAt] : [otherAt, builderAt];
+    };
+    const swap = legalTurns(s)
+      .filter((t): t is MoveTurn => t.kind === 'move')
+      .find((t) => {
+        const [w0, w1] = finalSquares(t);
+        return w0 === sq('d2') && w1 === sq('b2');
+      });
+    expect(swap).toBeDefined();
+    const after = applyTurn(s, swap!);
+    expect(workerAt(after, sq('d2'))).toBe(0);
+    expect(workerAt(after, sq('b2'))).toBe(1);
   });
 });

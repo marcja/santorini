@@ -23,6 +23,15 @@ export interface GodConfig {
   preBuild?: boolean;
   /** Also wins by moving down two or more levels (Pan). */
   winOnDescend2?: boolean;
+  /**
+   * Bonus on top of the normal one-step move (same "if...then" shape as
+   * Prometheus's pre-build): if you forgo moving up or down at all this
+   * turn, both workers may each reposition any number of times (even
+   * zero, flat only), then either builds (Hermes). A normal single-step
+   * up/down move — including winning by moving onto level 3 — is still a
+   * legal Hermes turn; it just forgoes this bonus.
+   */
+  flatMoveBothWorkers?: boolean;
 }
 
 const god = (cfg: GodConfig): GodConfig => cfg;
@@ -64,6 +73,12 @@ export const GODS: Record<GodId, GodConfig> = {
     name: 'Hephaestus',
     text: 'Your Build: Your Worker may build one additional block (not dome) on top of your first block.',
     extraBuild: 'sameSquare',
+  }),
+  hermes: god({
+    id: 'hermes',
+    name: 'Hermes',
+    text: 'Your Turn: If your Workers do not move up or down, they may each move any number of times (even zero), and then either builds.',
+    flatMoveBothWorkers: true,
   }),
   minotaur: god({
     id: 'minotaur',
