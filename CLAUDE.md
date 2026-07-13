@@ -80,3 +80,15 @@ already learned:
   6-game samples flipped the mcts-vs-greedy conclusion twice. Use ≥20 seeded
   games (scratchpad probe scripts) before believing a strength delta, and
   set test thresholds well below the observed win rate.
+- Refactoring engine/AI internals for cognitive-complexity (issue #3, PR5):
+  differential fuzz testing was *essential*, not optional, for validating
+  behavior preservation — the existing unit test suite (152 tests) did not
+  catch a real bug introduced mid-refactor (Artemis's extra-move step firing
+  after an already-winning first step in `movegen.ts`). The fuzz harness
+  (replay `legalTurns()`/`search()`/`train()` before and after, byte-compare
+  the output across many seeded positions/configs) caught it immediately.
+  Before restructuring any rules-critical (`packages/engine`) or
+  training-critical (`packages/ai` search/training internals) function,
+  write a scratchpad differential script that exercises it broadly and
+  compare exact output pre/post-refactor — don't rely on unit tests alone,
+  and don't trust a refactor "looks obviously equivalent" by inspection.
