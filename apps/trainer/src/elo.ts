@@ -22,6 +22,87 @@ export interface FitOptions {
   sweeps?: number;
 }
 
+/** Assign a stable index to each name seen, in first-seen order. */
+function indexNames(results: PairResult[]): {
+  names: string[];
+  index: Map<string, number>;
+} {
+  const names: string[] = [];
+  const index = new Map<string, number>();
+  const idx = (name: string): void => {
+    if (!index.has(name)) {
+      index.set(name, names.length);
+      names.push(name);
+    }
+  };
+  for (const r of results) {
+    idx(r.a);
+    idx(r.b);
+  }
+  return { names, index };
+}
+
+/** wins[i][j] = score of i against j (draws half, plus a virtual draw). */
+function buildScoreMatrix(
+  results: PairResult[],
+  index: Map<string, number>,
+  n: number,
+): Float64Array[] {
+  const wins = Array.from({ length: n }, () => new Float64Array(n));
+  for (const r of results) {
+    const i = index.get(r.a)!;
+    const j = index.get(r.b)!;
+    wins[i][j] += r.winsA + r.draws / 2 + 0.5;
+    wins[j][i] += r.winsB + r.draws / 2 + 0.5;
+  }
+  return wins;
+}
+
+/** One Bradley–Terry MLE update of gamma[i] against every other player. */
+function updateGamma(
+  i: number,
+  wins: Float64Array[],
+  gamma: Float64Array,
+  n: number,
+): void {
+  let scored = 0;
+  let denom = 0;
+  for (let j = 0; j < n; j++) {
+    if (j === i) continue;
+    const games = wins[i][j] + wins[j][i];
+    if (games === 0) continue;
+    scored += wins[i][j];
+    denom += games / (gamma[i] + gamma[j]);
+  }
+  if (denom > 0) gamma[i] = scored / denom;
+}
+
+/** Bradley–Terry minorization–maximization sweeps over the score matrix. */
+function sweepBradleyTerry(
+  wins: Float64Array[],
+  n: number,
+  sweeps: number,
+): Float64Array {
+  const gamma = new Float64Array(n).fill(1);
+  for (let sweep = 0; sweep < sweeps; sweep++) {
+    for (let i = 0; i < n; i++) updateGamma(i, wins, gamma, n);
+  }
+  return gamma;
+}
+
+/** Shift all ratings so `anchor` lands on `anchorRating`. */
+function anchorRatings(
+  ratings: Record<string, number>,
+  names: string[],
+  anchor: string,
+  anchorRating: number,
+): void {
+  if (!(anchor in ratings))
+    throw new Error(`anchor ${anchor} not among rated players`);
+  const shift = anchorRating - ratings[anchor];
+  for (const name of names) ratings[name] += shift;
+}
+
 /**
  * Fit Elo ratings to pairwise results by Bradley–Terry minorization–
  * maximization; draws score half a win each way. One virtual draw is added
@@ -31,55 +112,21 @@ export function fitElo(
   results: PairResult[],
   opts: FitOptions = {},
 ): Record<string, number> {
-  const names: string[] = [];
-  const index = new Map<string, number>();
-  const idx = (name: string): number => {
-    if (!index.has(name)) {
-      index.set(name, names.length);
-      names.push(name);
-    }
-    return index.get(name)!;
-  };
-  for (const r of results) {
-    idx(r.a);
-    idx(r.b);
-  }
+  const { names, index } = indexNames(results);
   const n = names.length;
   if (n === 0) return {};
 
-  // wins[i][j] = score of i against j (draws half, plus the virtual draw).
-  const wins = Array.from({ length: n }, () => new Float64Array(n));
-  for (const r of results) {
-    const i = idx(r.a);
-    const j = idx(r.b);
-    wins[i][j] += r.winsA + r.draws / 2 + 0.5;
-    wins[j][i] += r.winsB + r.draws / 2 + 0.5;
-  }
-
-  const gamma = new Float64Array(n).fill(1);
-  const sweeps = opts.sweeps ?? 200;
-  for (let sweep = 0; sweep < sweeps; sweep++) {
-    for (let i = 0; i < n; i++) {
-      let scored = 0;
-      let denom = 0;
-      for (let j = 0; j < n; j++) {
-        if (j === i) continue;
-        const games = wins[i][j] + wins[j][i];
-        if (games === 0) continue;
-        scored += wins[i][j];
-        denom += games / (gamma[i] + gamma[j]);
-      }
-      if (denom > 0) gamma[i] = scored / denom;
-    }
-  }
+  const wins = buildScoreMatrix(results, index, n);
+  const gamma = sweepBradleyTerry(wins, n, opts.sweeps ?? 200);
 
   const ratings: Record<string, number> = {};
   for (let i = 0; i < n; i++) ratings[names[i]] = 400 * Math.log10(gamma[i]);
-  const anchor = opts.anchor ?? names[0];
-  if (!(anchor in ratings))
-    throw new Error(`anchor ${anchor} not among rated players`);
-  const shift = (opts.anchorRating ?? 0) - ratings[anchor];
-  for (const name of names) ratings[name] += shift;
+  anchorRatings(
+    ratings,
+    names,
+    opts.anchor ?? names[0],
+    opts.anchorRating ?? 0,
+  );
   return ratings;
 }
 

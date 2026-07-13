@@ -108,10 +108,71 @@ function numberArray(x: unknown, length: number): x is number[] {
   );
 }
 
+type Fail = (msg: string) => never;
+
+function requireStaticWeights(w: EvalWeights, fail: Fail): void {
+  if (
+    !numberArray(w?.heightScore, 5) ||
+    typeof w.centerWeight !== 'number' ||
+    typeof w.climbWeight !== 'number'
+  ) {
+    fail('eval.weights must have heightScore[5], centerWeight, climbWeight');
+  }
+}
+
+function requireMlpParams(p: MlpParams, fail: Fail): void {
+  if (p?.inputSize !== FEATURE_COUNT) {
+    fail(`mlp@1 inputSize must be ${FEATURE_COUNT} (feature encoding v1)`);
+  }
+  if (
+    !Number.isInteger(p.hiddenSize) ||
+    p.hiddenSize < 1 ||
+    !numberArray(p.w1, p.hiddenSize * p.inputSize) ||
+    !numberArray(p.b1, p.hiddenSize) ||
+    !numberArray(p.w2, p.hiddenSize) ||
+    typeof p.b2 !== 'number'
+  ) {
+    fail('mlp@1 params have inconsistent shapes');
+  }
+}
+
+function requirePvParams(p: PvNetParams, fail: Fail): void {
+  if (p?.inputSize !== FEATURE_COUNT) {
+    fail(`pv@1 inputSize must be ${FEATURE_COUNT} (feature encoding v1)`);
+  }
+  if (p.actionCount !== ACTION_COUNT) {
+    fail(`pv@1 actionCount must be ${ACTION_COUNT} (action encoding v1)`);
+  }
+  if (
+    !Number.isInteger(p.hiddenSize) ||
+    p.hiddenSize < 1 ||
+    !numberArray(p.w1, p.hiddenSize * p.inputSize) ||
+    !numberArray(p.b1, p.hiddenSize) ||
+    !numberArray(p.wv, p.hiddenSize) ||
+    typeof p.bv !== 'number' ||
+    !numberArray(p.wp, p.actionCount * p.hiddenSize) ||
+    !numberArray(p.bp, p.actionCount)
+  ) {
+    fail('pv@1 params have inconsistent shapes');
+  }
+}
+
+function requireSearchConfig(s: SearchConfig, fail: Fail): void {
+  if (
+    !Number.isInteger(s?.iterations) ||
+    s.iterations < 1 ||
+    typeof s.c !== 'number' ||
+    !Number.isInteger(s.playoutDepth) ||
+    s.playoutDepth < 1
+  ) {
+    fail('search must have iterations>=1, c, playoutDepth>=1');
+  }
+}
+
 /** Structurally validate parsed JSON; throws with a specific message. */
 export function validateCheckpoint(data: unknown): Checkpoint {
   const c = data as Checkpoint;
-  const fail = (msg: string): never => {
+  const fail: Fail = (msg) => {
     throw new Error(`invalid checkpoint: ${msg}`);
   };
   if (typeof c !== 'object' || c === null) fail('not an object');
@@ -125,64 +186,17 @@ export function validateCheckpoint(data: unknown): Checkpoint {
   if (c.parent !== null && typeof c.parent !== 'string')
     fail('parent must be a string or null');
   if (c.eval?.type === 'static@1') {
-    const w = c.eval.weights;
-    if (
-      !numberArray(w?.heightScore, 5) ||
-      typeof w.centerWeight !== 'number' ||
-      typeof w.climbWeight !== 'number'
-    ) {
-      fail('eval.weights must have heightScore[5], centerWeight, climbWeight');
-    }
+    requireStaticWeights(c.eval.weights, fail);
   } else if (c.eval?.type === 'mlp@1') {
-    const p = c.eval.params;
-    if (p?.inputSize !== FEATURE_COUNT) {
-      fail(`mlp@1 inputSize must be ${FEATURE_COUNT} (feature encoding v1)`);
-    }
-    if (
-      !Number.isInteger(p.hiddenSize) ||
-      p.hiddenSize < 1 ||
-      !numberArray(p.w1, p.hiddenSize * p.inputSize) ||
-      !numberArray(p.b1, p.hiddenSize) ||
-      !numberArray(p.w2, p.hiddenSize) ||
-      typeof p.b2 !== 'number'
-    ) {
-      fail('mlp@1 params have inconsistent shapes');
-    }
+    requireMlpParams(c.eval.params, fail);
   } else if (c.eval?.type === 'pv@1') {
-    const p = c.eval.params;
-    if (p?.inputSize !== FEATURE_COUNT) {
-      fail(`pv@1 inputSize must be ${FEATURE_COUNT} (feature encoding v1)`);
-    }
-    if (p.actionCount !== ACTION_COUNT) {
-      fail(`pv@1 actionCount must be ${ACTION_COUNT} (action encoding v1)`);
-    }
-    if (
-      !Number.isInteger(p.hiddenSize) ||
-      p.hiddenSize < 1 ||
-      !numberArray(p.w1, p.hiddenSize * p.inputSize) ||
-      !numberArray(p.b1, p.hiddenSize) ||
-      !numberArray(p.wv, p.hiddenSize) ||
-      typeof p.bv !== 'number' ||
-      !numberArray(p.wp, p.actionCount * p.hiddenSize) ||
-      !numberArray(p.bp, p.actionCount)
-    ) {
-      fail('pv@1 params have inconsistent shapes');
-    }
+    requirePvParams(c.eval.params, fail);
   } else {
     fail(
       `unknown eval type ${JSON.stringify((c.eval as { type?: unknown } | null)?.type)}`,
     );
   }
-  const s = c.search;
-  if (
-    !Number.isInteger(s?.iterations) ||
-    s.iterations < 1 ||
-    typeof s.c !== 'number' ||
-    !Number.isInteger(s.playoutDepth) ||
-    s.playoutDepth < 1
-  ) {
-    fail('search must have iterations>=1, c, playoutDepth>=1');
-  }
+  requireSearchConfig(c.search, fail);
   if (c.elo !== null && typeof c.elo?.rating !== 'number')
     fail('elo must be null or a rating record');
   return c;
