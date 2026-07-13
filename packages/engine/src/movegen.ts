@@ -68,8 +68,188 @@ function moveTurns(state: GameState): MoveTurn[] {
   for (const worker of [0, 1] as const)
     tryMovesFrom(ctx, state, worker, undefined, false);
   if (cfg.preBuild) tryPreBuilds(ctx, state);
+  // Hermes: "if your Workers do not move up or down" is a bonus on top of
+  // the normal turn above (same pattern as Prometheus's "if your Worker
+  // does not move up" pre-build bonus), not a replacement for it — moving
+  // one worker up/down as normal is still a legal Hermes turn, it just
+  // forgoes the extra flat repositioning.
+  if (cfg.flatMoveBothWorkers) tryHermesTurns(ctx, state);
 
   return ctx.turns;
+}
+
+/**
+ * Hermes: if you forgo moving up or down at all this turn, both workers
+ * may each reposition any number of times (even zero, flat only), then
+ * either builds. Finds every jointly-reachable pair of final squares via a
+ * BFS over the joint (worker0Square, worker1Square) state space, moving
+ * one worker one flat step at a time — this correctly captures interleaved
+ * repositioning, including a full swap of the two workers' squares, which
+ * no fixed move-ordering can reach (each worker would need to step onto
+ * the other's *original* square while it's still occupied). Dedupes by
+ * resulting board state, including against the normal-move turns already
+ * generated above, which overlap exactly when one worker takes a single
+ * flat step and the other stays put.
+ */
+function tryHermesTurns(ctx: MoveCtx, state: GameState): void {
+  const base = ctx.p * 2;
+  const wi0 = base;
+  const wi1 = base + 1;
+  const w0 = state.workers[wi0];
+  const w1 = state.workers[wi1];
+  const seen = new Set<string>();
+  for (const t of ctx.turns) seen.add(turnResultKey(t, ctx.p, state.workers));
+
+  const { occ } = ctx;
+  for (const { a, b, pathA, pathB } of hermesJointReachable(ctx, w0, w1)) {
+    occ[w0] = -1;
+    occ[w1] = -1;
+    occ[a] = wi0;
+    occ[b] = wi1;
+
+    emitHermesBuildsFor(ctx, seen, 0, pathA, a, pathB);
+    emitHermesBuildsFor(ctx, seen, 1, pathB, b, pathA);
+
+    occ[a] = -1;
+    occ[b] = -1;
+    occ[w0] = wi0;
+    occ[w1] = wi1;
+  }
+}
+
+/** Canonical key for a build set (order-independent), used to dedupe transpositions. */
+function buildsKey(builds: BuildAction[]): string {
+  return builds
+    .map((b) => `${b.at}${b.dome ? 'D' : ''}`)
+    .sort()
+    .join(',');
+}
+
+/** Canonical key for the resulting board state of a move turn (both workers' final squares + the build set), used to dedupe transpositions. */
+function turnResultKey(t: MoveTurn, p: Player, workers: Int8Array): string {
+  const builderAt = t.path[t.path.length - 1];
+  const otherWorker = (1 - t.worker) as 0 | 1;
+  const otherAt = t.otherPath
+    ? t.otherPath[t.otherPath.length - 1]
+    : workers[p * 2 + otherWorker];
+  const w0 = t.worker === 0 ? builderAt : otherAt;
+  const w1 = t.worker === 1 ? builderAt : otherAt;
+  return `${w0}:${w1}:${buildsKey(t.builds)}`;
+}
+
+/** One node of the joint-reachability BFS: both workers' current squares and each one's own hop path so far (start square first). */
+interface HermesJointNode {
+  a: number;
+  b: number;
+  pathA: number[];
+  pathB: number[];
+}
+
+/**
+ * BFS over the joint (squareA, squareB) state space: from (w0, w1), expand
+ * by moving either worker one flat step into any same-height square not
+ * occupied by an opponent worker or by the other worker's *current* square
+ * in that joint state. Returns every reachable joint pair together with
+ * each worker's own hop sequence to get there — this explores all
+ * interleavings, so a full swap (each worker stepping through squares the
+ * other has since vacated) is found alongside simpler repositionings.
+ */
+function hermesJointReachable(
+  ctx: MoveCtx,
+  w0: number,
+  w1: number,
+): HermesJointNode[] {
+  const { occ } = ctx;
+  const fixedBlocked = (sq: number): boolean =>
+    occ[sq] >= 0 && sq !== w0 && sq !== w1;
+  const key = (a: number, b: number): number => a * CELLS + b;
+
+  const pathsA = new Map<number, number[]>();
+  const pathsB = new Map<number, number[]>();
+  const startKey = key(w0, w1);
+  pathsA.set(startKey, [w0]);
+  pathsB.set(startKey, [w1]);
+  const queue: number[] = [startKey];
+
+  // Record a newly-reached joint state (mover stepped to `nxt`; the other
+  // worker's square and path carry over unchanged).
+  const advance = (
+    a: number,
+    b: number,
+    pathA: number[],
+    pathB: number[],
+    nxt: number,
+    moverIsA: boolean,
+  ): void => {
+    const nk = moverIsA ? key(nxt, b) : key(a, nxt);
+    if (pathsA.has(nk)) return;
+    pathsA.set(nk, moverIsA ? [...pathA, nxt] : pathA);
+    pathsB.set(nk, moverIsA ? pathB : [...pathB, nxt]);
+    queue.push(nk);
+  };
+
+  for (let qi = 0; qi < queue.length; qi++) {
+    const k = queue[qi];
+    const a = Math.floor(k / CELLS);
+    const b = k % CELLS;
+    const pathA = pathsA.get(k) as number[];
+    const pathB = pathsB.get(k) as number[];
+    for (const nxt of flatSteps(ctx, fixedBlocked, a, b))
+      advance(a, b, pathA, pathB, nxt, true);
+    for (const nxt of flatSteps(ctx, fixedBlocked, b, a))
+      advance(a, b, pathA, pathB, nxt, false);
+  }
+
+  return queue.map((k) => ({
+    a: Math.floor(k / CELLS),
+    b: k % CELLS,
+    pathA: pathsA.get(k) as number[],
+    pathB: pathsB.get(k) as number[],
+  }));
+}
+
+/** Flat (same-height) neighbors of `from` that are open to step into: not `other`'s square, not domed/blocked/occupied by a fixed (non-Hermes) worker. */
+function flatSteps(
+  ctx: MoveCtx,
+  fixedBlocked: (sq: number) => boolean,
+  from: number,
+  other: number,
+): number[] {
+  const { h } = ctx;
+  const out: number[] = [];
+  for (const nxt of NEIGHBORS[from]) {
+    if (nxt === other || h[nxt] !== h[from] || fixedBlocked(nxt)) continue;
+    out.push(nxt);
+  }
+  return out;
+}
+
+/** Emit one turn per legal build combo with `builder` building at `builderAt`; dedupes transpositions (same resulting board state) against `seen`. */
+function emitHermesBuildsFor(
+  ctx: MoveCtx,
+  seen: Set<string>,
+  builder: 0 | 1,
+  builderPath: number[],
+  builderAt: number,
+  otherPath: number[],
+): void {
+  const otherAt = otherPath[otherPath.length - 1];
+  const finalW0 = builder === 0 ? builderAt : otherAt;
+  const finalW1 = builder === 1 ? builderAt : otherAt;
+  for (const builds of buildCombos(ctx, builderAt)) {
+    const key = `${finalW0}:${finalW1}:${buildsKey(builds)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const t: MoveTurn = {
+      kind: 'move',
+      worker: builder,
+      path: builderPath,
+      builds,
+      win: false,
+    };
+    if (otherPath.length > 1) t.otherPath = otherPath;
+    ctx.turns.push(t);
+  }
 }
 
 /** Prometheus: build before moving, then the move may not go up. */

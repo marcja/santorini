@@ -52,6 +52,15 @@ import './style.css';
 // takes one, the Challenger gets the other → the Challenger chooses the
 // Start Player. A free-pick panel remains as a dev shortcut.
 
+// Turn input is generic (see above) EXCEPT Hermes: its turns can move the
+// worker that *isn't* selected/built with (MoveTurn.otherPath), which the
+// prefix-matching click flow has no way to input. Hide it from the pickers
+// until the UI grows a way to move both workers. Engine + AI/coach support
+// is unaffected — only the human turn-input UI is gated.
+const SELECTABLE_GOD_IDS = GOD_IDS.filter(
+  (id) => id !== 'none' && id !== 'hermes',
+);
+
 type StepKind = 'pre' | 'move' | 'build';
 interface Step {
   kind: StepKind;
@@ -540,9 +549,9 @@ function setupHtml(): string {
   const chip = (c: number) => `<span class="chip p${c + 1}"></span>`;
   const cancelBtn = '<button data-act="cancel">Cancel</button>';
   if (draft.stage === 'challenger') {
-    const godOptions = GOD_IDS.filter((id) => id !== 'none')
-      .map((id) => `<option value="${id}">${GODS[id].name}</option>`)
-      .join('');
+    const godOptions = SELECTABLE_GOD_IDS.map(
+      (id) => `<option value="${id}">${GODS[id].name}</option>`,
+    ).join('');
     return `
       <div class="draft-title">New game — who is the Challenger?</div>
       <div class="draft-row">
@@ -565,12 +574,10 @@ function setupHtml(): string {
   }
   if (draft.stage === 'pick') {
     const picks = draft.picks;
-    const grid = GOD_IDS.filter((id) => id !== 'none')
-      .map((id) => {
-        const sel = picks.includes(id) ? ' class="selected"' : '';
-        return `<button${sel} data-act="toggle" data-god="${id}">${GODS[id].name}</button>`;
-      })
-      .join('');
+    const grid = SELECTABLE_GOD_IDS.map((id) => {
+      const sel = picks.includes(id) ? ' class="selected"' : '';
+      return `<button${sel} data-act="toggle" data-god="${id}">${GODS[id].name}</button>`;
+    }).join('');
     return `
       <div class="draft-title">${chip(draft.challenger)} ${COLOR_NAME[draft.challenger]} (Challenger):
         choose two gods to offer (${picks.length}/2)</div>

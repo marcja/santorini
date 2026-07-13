@@ -45,9 +45,18 @@ function applyPlacement(s: GameState, t: PlaceTurn): void {
 function applyMove(s: GameState, t: MoveTurn): void {
   const p = s.player;
   const cfg = GODS[s.gods[p]];
-  const wi = p * 2 + t.worker;
   if (t.preBuilds) for (const b of t.preBuilds) build(s, b);
 
+  // Hermes turns where the other worker also moved are the only case that
+  // needs the direct-jump path below (see its doc comment) — a Hermes turn
+  // where only the primary worker moved (including a normal up/down move,
+  // which can win) replays fine through the ordinary step-by-step path.
+  if (t.otherPath) {
+    applyHermesMove(s, t);
+    return;
+  }
+
+  const wi = p * 2 + t.worker;
   let movedUp = false;
   for (let i = 0; i + 1 < t.path.length; i++) {
     if (stepWorker(s, cfg, wi, t.path[i], t.path[i + 1])) movedUp = true;
@@ -62,6 +71,26 @@ function applyMove(s: GameState, t: MoveTurn): void {
 
   for (const b of t.builds) build(s, b);
   if (cfg.blocksOpponentUp) s.athenaUp = movedUp;
+  s.player = (1 - p) as Player;
+  s.turn++;
+}
+
+/**
+ * Hermes turns where the other worker also moved (MoveTurn.otherPath):
+ * both workers reposition flat, never displacing anyone and never
+ * changing height, so only the final square matters — jump straight there
+ * instead of stepping. Necessary specifically here (not for a solo
+ * multi-hop chain) because movegen may have explored the two workers'
+ * paths in either order, so intermediate squares can be transiently
+ * "occupied" by each other in an order this trusted fast path doesn't
+ * replay. Never wins (flat moves never change height), so no win check.
+ */
+function applyHermesMove(s: GameState, t: MoveTurn): void {
+  const p = s.player;
+  const owi = p * 2 + ((1 - t.worker) as 0 | 1);
+  s.workers[owi] = t.otherPath![t.otherPath!.length - 1];
+  s.workers[p * 2 + t.worker] = t.path[t.path.length - 1];
+  for (const b of t.builds) build(s, b);
   s.player = (1 - p) as Player;
   s.turn++;
 }

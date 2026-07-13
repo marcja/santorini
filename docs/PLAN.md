@@ -22,13 +22,23 @@ High-performance, headless, dependency-free TypeScript library.
       designed for fast search (typed arrays, in-place apply).
 - [x] Notation system ("SGN" — Santorini Game Notation, see `docs/NOTATION.md`):
       document, annotate, and replay games; PGN-style headers.
-- [x] God Powers framework (opt-in per game, per-player assignment) with 9 of
-      the simple 10: Apollo, Artemis, Athena, Atlas, Demeter, Hephaestus,
-      Minotaur, Pan, Prometheus.
-- [ ] Hermes (needs a design pass for both-workers unlimited flat movement),
-      then advanced/Golden Fleece/Hero powers as needed.
+- [x] God Powers framework (opt-in per game, per-player assignment) with all
+      10 simple gods: Apollo, Artemis, Athena, Atlas, Demeter, Hephaestus,
+      Hermes, Minotaur, Pan, Prometheus. Hermes ("if your Workers do not
+      move up or down, they may each move any number of times... then
+      either builds") is a bonus on top of the normal move — same
+      "if...then" shape as Prometheus's pre-build — not a replacement: a
+      normal single-step up/down move, including winning by climbing to
+      level 3, is still a legal Hermes turn. Needed a turn-shape extension
+      for the bonus branch — `MoveTurn.otherPath` plus an SGN `~` segment —
+      since it's the first god where a turn can move the worker that
+      *isn't* the one selected/built with; see `docs/NOTATION.md`.
+- [ ] Advanced gods (index 11–30), then Golden Fleece/Hero powers as needed.
 - [x] Test coverage of rules, gods, notation round-trips, and random-playout
-      invariants (46 tests); bench ~5.5k games/s, ~308k turns/s.
+      invariants (55 tests, incl. an adversarial-review-driven joint-BFS
+      fix for Hermes worker-swap turns — see PROGRESS.md); bench ~5.5k
+      games/s, ~308k turns/s (base game;
+      unaffected by Hermes since the bench doesn't exercise gods).
 
 ## Deliverable 2 — Self-play AI + training harness (`packages/ai`, `apps/trainer`)
 
@@ -86,6 +96,11 @@ Separate offline app; the AI teaches itself via adversarial self-play.
       Player (who takes engine seat 0 — colors are mapped to seats via
       `seatColor`). Free pick kept as a collapsed dev shortcut; verified
       through the in-app browser (2026-07-11).
+- [ ] Hermes support in the turn-input UI: `SELECTABLE_GOD_IDS` in
+      `apps/web/src/main.ts` currently excludes Hermes from both pickers,
+      since the click-based turn builder only knows how to construct
+      `MoveTurn.path`/`builds`, not the second worker's `otherPath` a Hermes
+      turn can carry (engine-side support is done — see Deliverable 1).
 - [x] Slice 2b: replay/analysis view — step through the game history
       (stepper buttons / arrow keys / click a record move) with a read-only
       board, load a pasted SGN record, export the current game as SGN;

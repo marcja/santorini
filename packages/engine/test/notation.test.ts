@@ -20,6 +20,8 @@ describe('turn notation round-trips', () => {
       ['atlas', 'demeter'],
       ['hephaestus', 'minotaur'],
       ['prometheus', 'artemis'],
+      ['hermes', 'none'],
+      ['hermes', 'hermes'],
     ];
     for (const gods of pairings) {
       const game = randomGame(gods, 0xc0ffee);
@@ -61,6 +63,19 @@ describe('SGN documents', () => {
     expect(replayed.state.phase).toBe(game.state.phase);
     expect(replayed.winner).toBe(game.winner);
     expect(replayed.headers.Result).toBe(game.winner === 0 ? '1-0' : '0-1');
+  });
+
+  it('serializes and replays a full Hermes game (including otherPath turns) identically', () => {
+    const game = randomGame(['hermes', 'hermes'], 0);
+    expect(game.isOver).toBe(true);
+    // Sanity: this game actually exercises the `~` otherPath segment.
+    expect(game.turnStrings.some((s) => s.includes('~'))).toBe(true);
+    const sgn = game.toSGN({ Event: 'test', Player1: 'A', Player2: 'B' });
+    const replayed = Game.fromSGN(sgn);
+    expect(replayed.state.heights).toEqual(game.state.heights);
+    expect(replayed.state.workers).toEqual(game.state.workers);
+    expect(replayed.state.phase).toBe(game.state.phase);
+    expect(replayed.winner).toBe(game.winner);
   });
 
   it('parses headers, comments, round numbers and results', () => {

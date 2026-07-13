@@ -10,6 +10,7 @@ export type GodId =
   | 'atlas'
   | 'demeter'
   | 'hephaestus'
+  | 'hermes'
   | 'minotaur'
   | 'pan'
   | 'prometheus';
@@ -48,12 +49,20 @@ export interface MoveTurn {
   kind: 'move';
   /** Which of the mover's two workers (0 or 1). */
   worker: 0 | 1;
-  /** Squares visited, starting square first. Length >= 2. */
+  /** Squares visited, starting square first. Length >= 2, except Hermes
+   * (may stay put: length 1). */
   path: Square[];
   /** Builds after moving. Empty iff `win`. */
   builds: BuildAction[];
   /** Builds before moving (Prometheus). */
   preBuilds?: BuildAction[];
+  /**
+   * Flat-only repositioning path for the *other* worker (start square
+   * first), present only if it actually moved (Hermes). Both workers may
+   * reposition on a Hermes turn; `path`/`worker` above are always the
+   * worker that performs the build.
+   */
+  otherPath?: Square[];
   /** True when this turn wins instantly (no builds follow). */
   win: boolean;
 }
