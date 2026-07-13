@@ -109,68 +109,75 @@ export class MctsPlayer implements AiPlayer {
     // Never search when an immediate win exists (searching can't rank it
     // above alternatives that also win eventually under win-aware playouts).
     const winTurn = legal.find((t) => t.kind === 'move' && t.win);
-    if (winTurn) {
-      const stat = { turn: winTurn, visits: 0, value: 1 };
-      return {
-        turn: winTurn,
-        visits: 0,
-        value: 1,
-        children: [stat],
-        pv: [winTurn],
-      };
-    }
+    if (winTurn) return instantWinResult(winTurn);
 
     const root = this.makeNode(null, null, state);
+    for (let i = 0; i < this.iterations; i++) this.runIteration(root);
+    return buildResult(root);
+  }
 
-    for (let i = 0; i < this.iterations; i++) {
-      // Select down to a leaf, expand one child, evaluate, backpropagate.
-      // UCT expands as soon as a node has untried turns; PUCT weighs the best
-      // untried prior against the expanded children every step.
-      const path: Node[] = [root];
-      let node = root;
-      while (node.proven === null) {
-        if (this.policy !== null) {
-          if (node.untried.length === 0 && node.children.length === 0) break;
-          const pick = this.selectPuct(node);
-          node = pick ?? this.expand(node);
-          path.push(node);
-          if (pick === null) break;
-        } else {
-          if (node.untried.length > 0) {
-            node = this.expand(node);
-            path.push(node);
-            break;
-          }
-          if (node.children.length === 0) break;
-          node = this.selectChild(node);
-          path.push(node);
-        }
-      }
-      const v0 =
-        node.proven !== null
-          ? node.proven === 0
-            ? 1
-            : 0
-          : this.playout(node.state);
-      for (const n of path) {
-        n.visits++;
-        if (n.mover !== null) n.value += n.mover === 0 ? v0 : 1 - v0;
-      }
+  /** Select down to a leaf, expand one child, evaluate, backpropagate. */
+  private runIteration(root: Node): void {
+    const path = this.selectAndExpand(root);
+    const node = path[path.length - 1];
+    const v0 =
+      node.proven !== null
+        ? node.proven === 0
+          ? 1
+          : 0
+        : this.playout(node.state);
+    for (const n of path) {
+      n.visits++;
+      if (n.mover !== null) n.value += n.mover === 0 ? v0 : 1 - v0;
     }
+  }
 
-    const children = [...root.children].sort((a, b) => b.visits - a.visits);
-    const bestChild = children[0];
-    return {
-      turn: bestChild.turn!,
-      visits: root.visits,
-      value: bestChild.visits > 0 ? bestChild.value / bestChild.visits : 0.5,
-      children: children.map((ch) => ({
-        turn: ch.turn!,
-        visits: ch.visits,
-        value: ch.visits > 0 ? ch.value / ch.visits : 0.5,
-      })),
-      pv: principalVariation(root),
-    };
+  /**
+   * Descend from root to a leaf via one selection step per node, expanding
+   * along the way. UCT expands as soon as a node has untried turns; PUCT
+   * weighs the best untried prior against the expanded children every step.
+   */
+  private selectAndExpand(root: Node): Node[] {
+    const path: Node[] = [root];
+    let node = root;
+    while (node.proven === null) {
+      const next =
+        this.policy !== null
+          ? this.stepPuct(node, path)
+          : this.stepUct(node, path);
+      if (next === null) break;
+      node = next;
+    }
+    return path;
+  }
+
+  /**
+   * One PUCT selection step: pushes the visited node onto `path`. Returns
+   * the child to continue from, or null to stop (already pushed if this
+   * step expanded a new node).
+   */
+  private stepPuct(node: Node, path: Node[]): Node | null {
+    if (node.untried.length === 0 && node.children.length === 0) return null;
+    const pick = this.selectPuct(node);
+    const next = pick ?? this.expand(node);
+    path.push(next);
+    return pick === null ? null : next;
+  }
+
+  /**
+   * One UCT selection step: pushes the visited node onto `path` when it
+   * continues. Returns the child to continue from, or null to stop.
+   */
+  private stepUct(node: Node, path: Node[]): Node | null {
+    if (node.untried.length > 0) {
+      const next = this.expand(node);
+      path.push(next);
+      return null;
+    }
+    if (node.children.length === 0) return null;
+    const next = this.selectChild(node);
+    path.push(next);
+    return next;
   }
 
   private makeNode(
@@ -295,6 +302,33 @@ export class MctsPlayer implements AiPlayer {
     if (s.phase === 'over') return s.winner === 0 ? 1 : 0;
     return 1 / (1 + Math.exp(-this.evalFn(s, 0) / EVAL_SCALE));
   }
+}
+
+function instantWinResult(winTurn: Turn): SearchResult {
+  const stat = { turn: winTurn, visits: 0, value: 1 };
+  return {
+    turn: winTurn,
+    visits: 0,
+    value: 1,
+    children: [stat],
+    pv: [winTurn],
+  };
+}
+
+function buildResult(root: Node): SearchResult {
+  const children = [...root.children].sort((a, b) => b.visits - a.visits);
+  const bestChild = children[0];
+  return {
+    turn: bestChild.turn!,
+    visits: root.visits,
+    value: bestChild.visits > 0 ? bestChild.value / bestChild.visits : 0.5,
+    children: children.map((ch) => ({
+      turn: ch.turn!,
+      visits: ch.visits,
+      value: ch.visits > 0 ? ch.value / ch.visits : 0.5,
+    })),
+    pv: principalVariation(root),
+  };
 }
 
 function principalVariation(root: Node): Turn[] {
