@@ -322,6 +322,38 @@ _Last updated: 2026-07-12 (session 12)_
   override for ai/trainer. Confirmed Biome's own warn-vs-error exit codes
   keep CI green at this stage — no need to split lint into two CI lanes.
   No source files touched. PR5 fixes these; PR6 flips to blocking.
+- **(issue #3, PR5/6) All 23 cognitive-complexity findings fixed.** Refactor
+  only — behavior preservation was verified per file, with the level of
+  rigor scaled to risk:
+  - `packages/engine` (apply/board/notation/movegen.ts, rules-critical):
+    reviewed personally. `movegen.ts`'s move generator was restructured from
+    closures into explicit-state top-level functions (`MoveCtx`); a
+    differential fuzz harness replaying `legalTurns()` at every half-turn
+    across all god pairings (~9.8k positions) caught a real bug mid-refactor
+    (Artemis's extra-move step firing after an already-winning first step)
+    before it could land — fixed, then reverified byte-identical against the
+    pre-refactor baseline. `board.ts`'s neighbor precomputation needed a
+    second pass (11 vs max 10) and an exact-order check against the original
+    nested loop (differential test, not just eyeballing).
+  - `packages/ai` search/training internals (mcts/mlp/pvnet/selfplay.ts,
+    also reviewed personally): `mcts.ts`'s search loop split into per-policy
+    (UCT/PUCT) step functions, verified byte-identical `SearchResult`s across
+    20 seeded UCT+PUCT runs. `mlp.ts`/`pvnet.ts`'s training loops split into
+    per-sample gradient-accumulation methods; verified trained weights
+    (rounded to the 6-decimal precision actually persisted to checkpoints)
+    are bit-identical across several seeded runs each — reported losses
+    differ only at ~1e-15 relative (float64 summation-order noise from
+    per-batch subtotaling, not a real difference).
+  - `packages/ai` checkpoint/coach/spec.ts, `apps/web/src/main.ts`,
+    `apps/trainer` (cli/elo/run.ts): delegated to parallel subagents (lower
+    rules/training risk), each verified against the full test suite +
+    typecheck; `main.ts`'s diff was reviewed by hand afterward (one type
+    annotation bug found and fixed — `Uint8Array` vs `number[]`) and played
+    through the in-app browser (setup placement, move+build, coach hints,
+    status text all confirmed working).
+  - Whole-repo result: `npx biome check .` 0 findings, typecheck clean,
+    152/152 tests green, engine bench unchanged (~13-14k games/s). PR6 flips
+    cognitive-complexity to blocking.
 
 ## Next
 

@@ -40,9 +40,9 @@ already learned:
   auto-formatted (not blocked) by a `.claude/settings.json` PostToolUse hook.
   Run `sh scripts/install-hooks.sh` once per clone to also block local
   commits (`git commit --no-verify` bypasses it in an emergency — CI still
-  catches it). `no-excessive-cognitive-complexity` is enabled but still
-  warn-only (max 15, `packages/engine` overridden to 10) — 23 current
-  findings tracked for cleanup in issue #3, PR5/6; it doesn't fail CI yet.
+  catches it). `no-excessive-cognitive-complexity` is enabled (max 15,
+  `packages/engine` overridden to 10) — all 23 findings from the initial
+  rollout are cleaned up (issue #3, PR5/6); still warn-only pending PR6.
 - Web dev server: use `.claude/launch.json` name `web` via the browser
   preview tools (never `npm run dev` in raw Bash — it blocks).
 
