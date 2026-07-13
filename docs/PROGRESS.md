@@ -354,6 +354,16 @@ _Last updated: 2026-07-12 (session 12)_
   - Whole-repo result: `npx biome check .` 0 findings, typecheck clean,
     152/152 tests green, engine bench unchanged (~13-14k games/s). PR6 flips
     cognitive-complexity to blocking.
+- **(issue #3, PR6/6) Cognitive-complexity is now blocking — issue #3 fully
+  resolved.** `noExcessiveCognitiveComplexity` flipped `warn` → `error`
+  (max 15 repo-wide, 10 for `packages/engine`) in `biome.json`. Repo was
+  already clean from PR5, so this is a config-only change. Verified with a
+  scratch over-threshold function (complexity 25) on a throwaway edit: both
+  `npx biome check` and `.githooks/pre-commit` correctly reject it (exit 1);
+  reverted before committing. Biome/lint/format enforcement across the
+  monorepo — warn-mode rollout (PR1), mechanical cleanup (PR2), blocking
+  lint/format + hooks (PR3), complexity visibility (PR4), complexity cleanup
+  (PR5), complexity enforcement (PR6) — is complete end to end.
 
 ## Next
 
