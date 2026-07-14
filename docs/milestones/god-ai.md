@@ -165,7 +165,7 @@ artifacts** — do not ship them.
 ### T11 — Hermes joins the pool — `blocked(T9,T10)` (encoding already reserves H6)
 ### T12 — Hermes two-worker web UI (issue #35) — `ready` (low priority, independent; in-browser verification required)
 
-## Slice 4 — god-draft AI (needs a GitHub issue filed — human action)
+## Slice 4 — god-draft AI (issue #39)
 
 ### T13 — matchup matrix — `blocked(T1,T2)`
 - `models/matchups.json`: 11×11 god pairings (incl. none), ≥20 seeded
