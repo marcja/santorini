@@ -73,7 +73,7 @@ artifacts** — do not ship them.
 - Rigor: training-critical file → differential script mandatory; main loop
   reads the diff. Branch: `fix/eval-god-wins`.
 
-### T2 — trainer CLI god matches (issue #21) — `ready`
+### T2 — trainer CLI god matches (issue #21) — `done(#45)`
 - Goal: `--gods god1,god2` on `trainer match` (seat alternation swaps gods
   with seats) and a god dimension on `gauntlet`/`calibrate`;
   every rating record carries its configuration (`configTier()` from the
@@ -88,7 +88,7 @@ artifacts** — do not ship them.
   plus a replay-verified god-match SGN.
 - Branch: `feat/trainer-god-matches`.
 
-### T3 — feature encoding v2 (issue #18) — `in-progress(feat/features-v2)`
+### T3 — feature encoding v2 (issue #18) — `review(#44)`
 - Goal: implement `docs/milestones/god-ai-encoding-v2.md` § features:
   `FEATURE_COUNT_V2 = 295`, god one-hots by rulebook index, state flags,
   new eval types `mlp@2`/`pv@2`, shared `packages/ai/src/encoding.ts`
@@ -102,12 +102,15 @@ artifacts** — do not ship them.
 - Rigor: training-critical → differential script before/after; T4 review
   before done; main loop reads the diff. Branch: `feat/features-v2`.
 
-### T4 — adversarial review of T3 — `blocked(T3)`
+### T4 — adversarial review of T3 — `in-progress(workflow wf_84fc6910-e92)`
 - Dynamic Workflow: adversarial correctness reviewer (against the manifest
   + `docs/reference/rulebook.md` for the state-flag semantics, instructed
   to construct counterexamples) + implementation-quality reviewer + fixer;
   independently re-verify the fixer's output (CLAUDE.md guardrails).
   Record the Workflow runId here when launched.
+- Launched 2026-07-14 against PR #44 (`feat/features-v2`). Run ID
+  `wf_84fc6910-e92` — resume with `resumeFromRunId` if interrupted, never
+  rerun from scratch.
 
 ### T5 — self-play god wiring (thin slice of issue #17) — `blocked(T3)`
 - Goal: `gods?: [GodId, GodId]` on `SelfPlayConfig` threaded to
