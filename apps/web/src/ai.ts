@@ -34,7 +34,11 @@ function loadCheckpoint(path: string): Checkpoint {
 export interface AiLevel {
   /** Ladder rung name: Beginner / Easy / Medium / Hard / Expert. */
   name: string;
-  /** Underlying player + calibrated Elo, e.g. "gen-5, Elo 841". */
+  /**
+   * Underlying player + calibrated Elo, e.g. "gen-5, Elo 841 (base game)".
+   * Qualified "(base game)" because every ladder rating was measured in
+   * base-game play only — it does not transfer to god games (issue #22).
+   */
   detail: string;
   /** Fresh player per game — players carry RNG state. */
   make(seed: number): AiPlayer;
@@ -54,7 +58,7 @@ export const AI_LEVELS: AiLevel[] = ladderJson.levels.map((level) => {
   );
   return {
     name: level.name,
-    detail: `${label}, Elo ${level.rating}`,
+    detail: `${label}, Elo ${level.rating} (base game)`,
     make: (seed: number) => playerFromSpec(spec, seed, loadCheckpoint),
   };
 });

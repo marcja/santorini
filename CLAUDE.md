@@ -57,8 +57,21 @@ already learned:
 - UI changes are not done until played through the in-app browser
   (screenshot + clicks), not just typechecked.
 - Delegate mechanical, well-specified work (bulk test writing, doc extraction,
-  repetitive refactors) to Sonnet subagents; keep design and rules-critical
-  code in the main loop.
+  repetitive refactors) to Sonnet subagents. Rules-critical
+  (`packages/engine`) and training-critical (`packages/ai` search/training
+  internals) code may **also** be implemented by a subagent — this is how
+  multi-session loops (e.g. `/loop`-driven milestones) stay viable — but only
+  under all three guardrails, which the delegating loop must enforce rather
+  than the subagent self-certify: (1) the task card requires a differential
+  fuzz/probe script written *before* the change and byte-compared after
+  (mistake log, issue #3 PR5); (2) semantics-changing work gets the
+  adversarial rules-correctness + implementation-quality review Workflow
+  before it's "done" (mistake log, PR #37); (3) the main-loop agent
+  personally reads the final diff of the rules/training-critical files and
+  independently reruns typecheck/lint/tests — never accepting the subagent's
+  or fixer's summary as verification. Design decisions (encoding layouts,
+  rule interpretations, promotion criteria) stay in the main loop; subagents
+  implement against a frozen spec, they don't set it.
 
 ## Mistake log (append when a lesson is learned)
 

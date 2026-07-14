@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyTurn,
+  configTier,
+  GOD_IDS,
+  GODS,
   legalTurns,
   parseSquareName,
   workerAt,
@@ -439,5 +442,24 @@ describe('Hermes (flat multi-move bonus when forgoing up/down; normal move other
     const after = applyTurn(s, swap!);
     expect(workerAt(after, sq('d2'))).toBe(0);
     expect(workerAt(after, sq('b2'))).toBe(1);
+  });
+});
+
+describe('God tiers and rulebook indices (issue #26)', () => {
+  it('every implemented god carries tier "simple" and its rulebook index 1-10', () => {
+    const real = GOD_IDS.filter((id) => id !== 'none');
+    expect(real).toHaveLength(10);
+    const indices = real.map((id) => GODS[id].index);
+    expect([...indices].sort((a, b) => a! - b!)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    for (const id of real) expect(GODS[id].tier).toBe('simple');
+    expect(GODS.none.tier).toBeUndefined();
+    expect(GODS.none.index).toBeUndefined();
+  });
+
+  it('configTier reports the configuration identity of a god pairing', () => {
+    expect(configTier('none', 'none')).toBe('base');
+    expect(configTier('pan', 'none')).toBe('simple');
+    expect(configTier('none', 'athena')).toBe('simple');
+    expect(configTier('apollo', 'hermes')).toBe('simple');
   });
 });
