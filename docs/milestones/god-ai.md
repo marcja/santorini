@@ -59,7 +59,7 @@ sharing an endpoint yield identical states), so features-v2 alone makes
 them trainable. Slice-1 checkpoints are **disposable pipeline-validation
 artifacts** — do not ship them.
 
-### T1 — static eval god win-condition fix (issue #20) — `in-progress(fix/eval-god-wins)`
+### T1 — static eval god win-condition fix (issue #20) — `done(#42)`
 - Goal: `packages/ai/src/eval.ts` must stop scoring god win conditions
   inversely. Pan first (descent-win term; level-3 no longer scored below
   level-2 for a Pan player); audit all 10 simple gods with scratchpad
