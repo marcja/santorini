@@ -587,9 +587,20 @@ rungs (random 0 / mcts(200) 657 / greedy 808 / gen-003 903).
    eval no longer scores Pan's descend-2 win condition inversely
    (`heightScoreFor` clamps level 3 ≥ level 2 only for `winOnDescend2`
    gods); differential script confirmed base-game (`none+none`) eval
-   scores stay byte-identical, so gen-007 stays valid. In progress: T3
-   (features v2, `feat/features-v2`), dispatched to a subagent
-   2026-07-14. Next ready: T2 (trainer `--gods` CLI), T10 (Hermes bench).
+   scores stay byte-identical, so gen-007 stays valid. **T2 done (#45,
+   2026-07-14):** `trainer match/calibrate/gauntlet` gain `--gods
+   god1,god2` (seat-attached, swaps with seat alternation), SGN `God1`/
+   `God2` headers, configuration-tier labels on ratings, and an explicit
+   rejection of `ckpt:` player specs under non-base `--gods` (features v1
+   has no god planes — would silently play god-blind until encoding v2).
+   **T3 (features v2, PR #44) implemented and independently verified**
+   (typecheck/lint/test rerun, full diff read: `FEATURE_COUNT_V2 = 295`,
+   offsets match the frozen manifest, Athena flag derivation checked
+   against `apply.ts`/`movegen.ts` semantics); in `review` pending T4's
+   adversarial-review Workflow (`wf_84fc6910-e92`, launched 2026-07-14)
+   before merge, per the milestone's training-critical-code rigor. Next
+   ready after T4 lands: T10 (Hermes bench); T5 (self-play god wiring)
+   unblocks once T3 merges.
    Issues synced to the plan 2026-07-14: alignment comments on #17–#26 +
    #35/#36, #27 closed as delivered, god-draft AI filed as #39.
 10. Follow-on milestone after that: ship the god-aware checkpoint to
