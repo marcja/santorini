@@ -27,6 +27,20 @@ export {
   winningTurns,
 } from './coach.ts';
 export {
+  ACTION_HEADS_V2,
+  FEATURE_COUNT_V2,
+  GOD_ONE_HOT_COUNT,
+  GOD_STATE_FLAG_COUNT,
+  godOneHotIndex,
+  MAX_GOD_INDEX,
+  MOVER_FLAGS_OFFSET,
+  MOVER_GOD_OFFSET,
+  OPPONENT_FLAGS_OFFSET,
+  OPPONENT_GOD_OFFSET,
+  POLICY_LOGITS_V2,
+  V1_FEATURE_COUNT,
+} from './encoding.ts';
+export {
   DEFAULT_EVAL_WEIGHTS,
   EVAL_SCALE,
   type EvalFn,
@@ -36,6 +50,7 @@ export {
 export {
   augmentSamples,
   encodeFeatures,
+  encodeFeaturesV2,
   FEATURE_COUNT,
   SYMMETRY_MAPS,
   transformFeatures,

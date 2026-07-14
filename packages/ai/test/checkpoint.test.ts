@@ -9,8 +9,9 @@ import {
   validateCheckpoint,
   type CheckpointEval,
 } from '../src/checkpoint.ts';
+import { POLICY_LOGITS_V2 } from '../src/encoding.ts';
 import { DEFAULT_EVAL_WEIGHTS, EVAL_SCALE } from '../src/eval.ts';
-import { FEATURE_COUNT } from '../src/features.ts';
+import { FEATURE_COUNT, FEATURE_COUNT_V2 } from '../src/features.ts';
 import { Mlp } from '../src/mlp.ts';
 import { ACTION_COUNT } from '../src/policy.ts';
 import { PolicyValueNet } from '../src/pvnet.ts';
@@ -24,6 +25,17 @@ function pvEval(hiddenSize = 4): CheckpointEval {
   return {
     type: 'pv@1',
     params: PolicyValueNet.init(FEATURE_COUNT, hiddenSize, ACTION_COUNT, 7).toParams(),
+  };
+}
+
+function mlpEvalV2(hiddenSize = 4): CheckpointEval {
+  return { type: 'mlp@2', params: Mlp.init(FEATURE_COUNT_V2, hiddenSize, 7).toParams() };
+}
+
+function pvEvalV2(hiddenSize = 4): CheckpointEval {
+  return {
+    type: 'pv@2',
+    params: PolicyValueNet.init(FEATURE_COUNT_V2, hiddenSize, POLICY_LOGITS_V2, 7).toParams(),
   };
 }
 
@@ -167,5 +179,59 @@ describe('checkpoint', () => {
     const turn = player.chooseTurn(state);
     expect(turn.kind).toBe('move');
     if (turn.kind === 'move') expect(turn.win).toBe(true);
+  });
+
+  it('round-trips an mlp@2 checkpoint and rejects malformed params', () => {
+    const ckpt = createCheckpoint('2026-07-14T00:00:00Z', {
+      generation: 1,
+      eval: mlpEvalV2(),
+    });
+    expect(validateCheckpoint(JSON.parse(JSON.stringify(ckpt)))).toEqual(ckpt);
+
+    const badInput = JSON.parse(JSON.stringify(ckpt));
+    badInput.eval.params.inputSize = FEATURE_COUNT; // v1 size, not v2
+    expect(() => validateCheckpoint(badInput)).toThrow(/mlp@2 inputSize must be 295/);
+  });
+
+  it('mlp@2 eval negates cleanly across perspectives, over a god-bearing state', () => {
+    const evalFn = checkpointEvalFn(mlpEvalV2());
+    const state = pos({
+      heights: { b2: 1 },
+      p0: ['b2', 'd4'],
+      p1: ['a5', 'e5'],
+      gods: ['pan', 'athena'],
+    });
+    const forMover = evalFn(state, 0);
+    const forOther = evalFn(state, 1);
+    expect(forOther).toBeCloseTo(-forMover, 10);
+  });
+
+  it('round-trips a pv@2 checkpoint and rejects malformed params', () => {
+    const ckpt = createCheckpoint('2026-07-14T00:00:00Z', {
+      generation: 1,
+      eval: pvEvalV2(),
+    });
+    expect(validateCheckpoint(JSON.parse(JSON.stringify(ckpt)))).toEqual(ckpt);
+
+    const badActions = JSON.parse(JSON.stringify(ckpt));
+    badActions.eval.params.actionCount = ACTION_COUNT; // v1 size, not v2 (83)
+    expect(() => validateCheckpoint(badActions)).toThrow(/pv@2 actionCount must be 83/);
+
+    const badInput = JSON.parse(JSON.stringify(ckpt));
+    badInput.eval.params.inputSize = FEATURE_COUNT; // v1 size, not v2
+    expect(() => validateCheckpoint(badInput)).toThrow(/pv@2 inputSize must be 295/);
+  });
+
+  it("pv@2's value head works standalone; its policy head throws until action encoding v2 lands", () => {
+    const ev = pvEvalV2();
+    const evalFn = checkpointEvalFn(ev);
+    const state = pos({
+      heights: { b2: 1 },
+      p0: ['b2', 'd4'],
+      p1: ['a5', 'e5'],
+      gods: ['pan', 'none'],
+    });
+    expect(evalFn(state, 1)).toBeCloseTo(-evalFn(state, 0), 10);
+    expect(() => checkpointPolicyFn(ev)).toThrow(/pv@2 policy decoding is not implemented/);
   });
 });

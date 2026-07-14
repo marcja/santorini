@@ -5,7 +5,13 @@ import {
   type EvalWeights,
   evaluate,
 } from './eval.ts';
-import { encodeFeatures, FEATURE_COUNT } from './features.ts';
+import { POLICY_LOGITS_V2 } from './encoding.ts';
+import {
+  encodeFeatures,
+  encodeFeaturesV2,
+  FEATURE_COUNT,
+  FEATURE_COUNT_V2,
+} from './features.ts';
 import { MctsPlayer } from './mcts.ts';
 import { Mlp, type MlpParams } from './mlp.ts';
 import type { AiPlayer } from './player.ts';
@@ -43,11 +49,20 @@ export interface SearchConfig {
  * feature encoding v1 (its logit is the mover's win probability); `pv@1` =
  * the two-headed net — same value contract plus a policy head over action
  * encoding v1 (checkpoints of this type search with PUCT).
+ *
+ * `mlp@2`/`pv@2` are the god-aware counterparts: same net shapes, but over
+ * feature encoding v2 (`FEATURE_COUNT_V2` = 295, god one-hots + state flags —
+ * see `docs/milestones/god-ai-encoding-v2.md`). `pv@2`'s value head works
+ * today; its policy head decodes against action encoding v2 (issue #19/T7),
+ * which has not landed yet — `checkpointPolicyFn` throws for `pv@2` rather
+ * than silently misreading logits through the v1 flat-action decoder.
  */
 export type CheckpointEval =
   | { type: 'static@1'; weights: EvalWeights }
   | { type: 'mlp@1'; params: MlpParams }
-  | { type: 'pv@1'; params: PvNetParams };
+  | { type: 'pv@1'; params: PvNetParams }
+  | { type: 'mlp@2'; params: MlpParams }
+  | { type: 'pv@2'; params: PvNetParams };
 
 export interface Checkpoint {
   format: typeof CHECKPOINT_FORMAT;
@@ -120,9 +135,17 @@ function requireStaticWeights(w: EvalWeights, fail: Fail): void {
   }
 }
 
-function requireMlpParams(p: MlpParams, fail: Fail): void {
-  if (p?.inputSize !== FEATURE_COUNT) {
-    fail(`mlp@1 inputSize must be ${FEATURE_COUNT} (feature encoding v1)`);
+function requireMlpParams(
+  p: MlpParams,
+  fail: Fail,
+  evalType: 'mlp@1' | 'mlp@2',
+  expectedInputSize: number,
+  encodingLabel: string,
+): void {
+  if (p?.inputSize !== expectedInputSize) {
+    fail(
+      `${evalType} inputSize must be ${expectedInputSize} (${encodingLabel})`,
+    );
   }
   if (
     !Number.isInteger(p.hiddenSize) ||
@@ -132,16 +155,28 @@ function requireMlpParams(p: MlpParams, fail: Fail): void {
     !numberArray(p.w2, p.hiddenSize) ||
     typeof p.b2 !== 'number'
   ) {
-    fail('mlp@1 params have inconsistent shapes');
+    fail(`${evalType} params have inconsistent shapes`);
   }
 }
 
-function requirePvParams(p: PvNetParams, fail: Fail): void {
-  if (p?.inputSize !== FEATURE_COUNT) {
-    fail(`pv@1 inputSize must be ${FEATURE_COUNT} (feature encoding v1)`);
+function requirePvParams(
+  p: PvNetParams,
+  fail: Fail,
+  evalType: 'pv@1' | 'pv@2',
+  expectedInputSize: number,
+  featureEncodingLabel: string,
+  expectedActionCount: number,
+  actionEncodingLabel: string,
+): void {
+  if (p?.inputSize !== expectedInputSize) {
+    fail(
+      `${evalType} inputSize must be ${expectedInputSize} (${featureEncodingLabel})`,
+    );
   }
-  if (p.actionCount !== ACTION_COUNT) {
-    fail(`pv@1 actionCount must be ${ACTION_COUNT} (action encoding v1)`);
+  if (p.actionCount !== expectedActionCount) {
+    fail(
+      `${evalType} actionCount must be ${expectedActionCount} (${actionEncodingLabel})`,
+    );
   }
   if (
     !Number.isInteger(p.hiddenSize) ||
@@ -153,7 +188,7 @@ function requirePvParams(p: PvNetParams, fail: Fail): void {
     !numberArray(p.wp, p.actionCount * p.hiddenSize) ||
     !numberArray(p.bp, p.actionCount)
   ) {
-    fail('pv@1 params have inconsistent shapes');
+    fail(`${evalType} params have inconsistent shapes`);
   }
 }
 
@@ -166,6 +201,54 @@ function requireSearchConfig(s: SearchConfig, fail: Fail): void {
     s.playoutDepth < 1
   ) {
     fail('search must have iterations>=1, c, playoutDepth>=1');
+  }
+}
+
+/** Dispatch on `ev.type` to the right shape check — factored out of
+ * `validateCheckpoint` to keep its own branching under the complexity cap. */
+function requireEvalParams(ev: CheckpointEval, fail: Fail): void {
+  if (ev?.type === 'static@1') {
+    requireStaticWeights(ev.weights, fail);
+  } else if (ev?.type === 'mlp@1') {
+    requireMlpParams(
+      ev.params,
+      fail,
+      'mlp@1',
+      FEATURE_COUNT,
+      'feature encoding v1',
+    );
+  } else if (ev?.type === 'mlp@2') {
+    requireMlpParams(
+      ev.params,
+      fail,
+      'mlp@2',
+      FEATURE_COUNT_V2,
+      'feature encoding v2',
+    );
+  } else if (ev?.type === 'pv@1') {
+    requirePvParams(
+      ev.params,
+      fail,
+      'pv@1',
+      FEATURE_COUNT,
+      'feature encoding v1',
+      ACTION_COUNT,
+      'action encoding v1',
+    );
+  } else if (ev?.type === 'pv@2') {
+    requirePvParams(
+      ev.params,
+      fail,
+      'pv@2',
+      FEATURE_COUNT_V2,
+      'feature encoding v2',
+      POLICY_LOGITS_V2,
+      'policy action encoding v2',
+    );
+  } else {
+    fail(
+      `unknown eval type ${JSON.stringify((ev as { type?: unknown } | null)?.type)}`,
+    );
   }
 }
 
@@ -185,17 +268,7 @@ export function validateCheckpoint(data: unknown): Checkpoint {
   if (typeof c.createdAt !== 'string') fail('createdAt must be a string');
   if (c.parent !== null && typeof c.parent !== 'string')
     fail('parent must be a string or null');
-  if (c.eval?.type === 'static@1') {
-    requireStaticWeights(c.eval.weights, fail);
-  } else if (c.eval?.type === 'mlp@1') {
-    requireMlpParams(c.eval.params, fail);
-  } else if (c.eval?.type === 'pv@1') {
-    requirePvParams(c.eval.params, fail);
-  } else {
-    fail(
-      `unknown eval type ${JSON.stringify((c.eval as { type?: unknown } | null)?.type)}`,
-    );
-  }
+  requireEvalParams(c.eval, fail);
   requireSearchConfig(c.search, fail);
   if (c.elo !== null && typeof c.elo?.rating !== 'number')
     fail('elo must be null or a rating record');
@@ -208,14 +281,18 @@ export function checkpointEvalFn(ev: CheckpointEval): EvalFn {
     const weights = ev.weights;
     return (state, me) => evaluate(state, me, weights);
   }
-  const buf = new Float32Array(FEATURE_COUNT);
+  const isV2 = ev.type === 'mlp@2' || ev.type === 'pv@2';
+  const encode = isV2 ? encodeFeaturesV2 : encodeFeatures;
+  const buf = new Float32Array(isV2 ? FEATURE_COUNT_V2 : FEATURE_COUNT);
   const net =
-    ev.type === 'mlp@1' ? new Mlp(ev.params) : new PolicyValueNet(ev.params);
+    ev.type === 'mlp@1' || ev.type === 'mlp@2'
+      ? new Mlp(ev.params)
+      : new PolicyValueNet(ev.params);
   const forward =
     net instanceof Mlp ? net.forward.bind(net) : net.valueForward.bind(net);
   return (state, me) => {
     // The net scores the player to move; negate for the other perspective.
-    const logit = forward(encodeFeatures(state, buf));
+    const logit = forward(encode(state, buf));
     return (state.player === me ? logit : -logit) * EVAL_SCALE;
   };
 }
@@ -223,8 +300,23 @@ export function checkpointEvalFn(ev: CheckpointEval): EvalFn {
 /**
  * Build the PolicyFn a checkpoint's eval spec describes, or null when the
  * eval has no policy head (such checkpoints search with plain UCT).
+ *
+ * `pv@2` checkpoints have a policy head shaped for action encoding v2
+ * (`POLICY_LOGITS_V2` = 83 factorized-head logits, issue #19/T7), but that
+ * decoder does not exist yet — `policyPriors`/`turnAction` are v1-only and
+ * would silently misread a v2 logit layout (looking up out-of-range flat
+ * action indices) rather than throw. Fail loudly instead: a `pv@2`
+ * checkpoint's value head is fully usable today via `checkpointEvalFn`; its
+ * policy head is not.
  */
 export function checkpointPolicyFn(ev: CheckpointEval): PolicyFn | null {
+  if (ev.type === 'pv@2') {
+    throw new Error(
+      'pv@2 policy decoding is not implemented yet (action encoding v2 / ' +
+        'issue #19 has not landed) — use checkpointEvalFn for its value ' +
+        'head only until then',
+    );
+  }
   if (ev.type !== 'pv@1') return null;
   const net = new PolicyValueNet(ev.params);
   const buf = new Float32Array(FEATURE_COUNT);
