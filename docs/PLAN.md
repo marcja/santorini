@@ -96,7 +96,7 @@ Separate offline app; the AI teaches itself via adversarial self-play.
   - [ ] Slice 3 — Hermes fast-follow: throughput measurement/fix (#36),
         pool inclusion; web two-worker UI (#35) trails independently.
   - [ ] Slice 4 — god-draft AI: matchup matrix + minimax draft with
-        seeded softmax temperature (issue to be filed).
+        seeded softmax temperature (issue #39).
 - [x] Strength ladder: frozen checkpoints at increasing strength = difficulty
       levels. `models/ladder.json` (`santorini-ladder@1`): Beginner=random(0),
       Easy=mcts:200(657), Medium=greedy(808), Hard=ckpt:gen-005(841),
