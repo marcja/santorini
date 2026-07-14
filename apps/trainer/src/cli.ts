@@ -32,6 +32,7 @@ import {
   selfPlay,
   specName,
 } from '@santorini/ai';
+import { configTier, type GodId, godIdByName } from '@santorini/engine';
 import {
   fitElo,
   type GauntletLine,
@@ -50,10 +51,11 @@ import { gameToSgn, type RunResult, runMatch } from './run.ts';
 const USAGE = `usage:
   trainer init      [--out models/gen-000.json] [--notes TEXT] [--force]
   trainer match     <a> <b> [--games 20] [--seed 1] [--max-half-turns 400] [--sgn FILE]
+                    [--gods god1,god2]
   trainer calibrate [--players "random greedy mcts:200 mcts:1000"] [--games 40] [--seed 1]
-                    [--out models/baselines.json]
+                    [--out models/baselines.json] [--gods god1,god2]
   trainer gauntlet  <player> [--games 20] [--seed 1] [--baselines models/baselines.json]
-                    [--update]
+                    [--update] [--gods god1,god2]
   trainer train     [--parent models/gen-000.json] [--out models/gen-NNN.json] [--games 200]
                     [--seed 1] [--iters PARENT] [--temp-turns 8] [--max-half-turns 400]
                     [--hidden 64] [--epochs 10] [--lr 0.2] [--batch 64] [--augment]
@@ -62,7 +64,13 @@ const USAGE = `usage:
                      --wd = L2 weight decay, pv nets only)
 
 player specs: random | greedy | mcts:ITERS[,c=F][,depth=N] | ckpt:PATH[,iters=N]
-(the --players pool is space-separated because specs may contain commas)`;
+(the --players pool is space-separated because specs may contain commas)
+
+--gods god1,god2: gods for board seats 0/1 (default none,none = base game).
+Seat alternation swaps which player sits in each seat, so the god stays
+attached to the seat, not to a given player. ckpt: player specs are
+rejected under any non-none --gods (see the error message) until encoding
+v2 lands.`;
 
 const DEFAULT_BASELINES = 'random greedy mcts:200 mcts:1000';
 /** Prime stride keeps per-pair seed ranges disjoint (games use seed+2i). */
@@ -105,6 +113,46 @@ function pct(x: number): string {
   return `${(100 * x).toFixed(1)}%`;
 }
 
+const BASE_GODS: [GodId, GodId] = ['none', 'none'];
+
+/** Parse `--gods god1,god2` (case-insensitive god names/ids); default base. */
+function parseGodsFlag(raw: string | undefined): [GodId, GodId] {
+  if (raw === undefined) return BASE_GODS;
+  const parts = raw.split(',');
+  if (parts.length !== 2) {
+    throw new Error(
+      `--gods needs exactly two comma-separated god names, e.g. --gods pan,pan (got ${JSON.stringify(raw)})`,
+    );
+  }
+  return [godIdByName(parts[0]), godIdByName(parts[1])];
+}
+
+/**
+ * ckpt: player specs encode positions under features v1, which has no
+ * god/state-flag planes — under any non-base --gods they'd play silently
+ * god-blind. Reject outright until encoding v2 (issue #18, T3) lands.
+ */
+function assertNoCkptWithGods(specs: PlayerSpec[], gods: [GodId, GodId]): void {
+  if (gods[0] === 'none' && gods[1] === 'none') return;
+  if (specs.some((s) => s.kind === 'ckpt')) {
+    throw new Error(
+      'ckpt: player specs are rejected under --gods: net players encode ' +
+        'positions with features v1, which has no god/state-flag planes, ' +
+        'so a checkpoint would play the configured gods silently god-blind. ' +
+        'God-aware training lands in encoding v2 (docs/milestones/' +
+        'god-ai-encoding-v2.md, issue #18); until then, use random, greedy, ' +
+        'or mcts players for non-base god configurations.',
+    );
+  }
+}
+
+/** Human-readable configuration label for console output. */
+function describeGods(gods: [GodId, GodId]): string {
+  const tier = configTier(gods[0], gods[1]);
+  if (gods[0] === 'none' && gods[1] === 'none') return `base game (${tier})`;
+  return `${gods[0]},${gods[1]} (${tier})`;
+}
+
 function signed(x: number): string {
   const r = Math.round(x);
   return r >= 0 ? `+${r}` : `${r}`;
@@ -116,13 +164,17 @@ function playPair(
   games: number,
   seed: number,
   maxHalfTurns?: number,
+  gods?: [GodId, GodId],
   onGame?: Parameters<typeof runMatch>[3],
 ): RunResult {
-  const config: { games: number; seed: number; maxHalfTurns?: number } = {
-    games,
-    seed,
-  };
+  const config: {
+    games: number;
+    seed: number;
+    maxHalfTurns?: number;
+    gods?: [GodId, GodId];
+  } = { games, seed };
   if (maxHalfTurns !== undefined) config.maxHalfTurns = maxHalfTurns;
+  if (gods !== undefined) config.gods = gods;
   return runMatch(
     (s) => playerFromSpec(specA, s, loadCheckpoint),
     (s) => playerFromSpec(specB, s, loadCheckpoint),
@@ -162,23 +214,28 @@ function cmdMatch(args: string[]): void {
       seed: { type: 'string', default: '1' },
       'max-half-turns': { type: 'string', default: '400' },
       sgn: { type: 'string' },
+      gods: { type: 'string' },
     },
   });
   if (positionals.length !== 2)
     throw new Error('match needs exactly two player specs');
   const specA = parsePlayerSpec(positionals[0]);
   const specB = parsePlayerSpec(positionals[1]);
+  const gods = parseGodsFlag(values.gods);
+  assertNoCkptWithGods([specA, specB], gods);
   const nameA = nameOf(specA);
   const nameB = nameOf(specB);
   const games = int('games', values.games);
   const seed = int('seed', values.seed);
 
+  console.log(`configuration: ${describeGods(gods)}`);
   const result = playPair(
     specA,
     specB,
     games,
     seed,
     int('max-half-turns', values['max-half-turns']),
+    gods,
     (game, i) => {
       const names: [string, string] =
         game.aSeat === 0 ? [nameA, nameB] : [nameB, nameA];
@@ -217,16 +274,20 @@ function cmdCalibrate(args: string[]): void {
       games: { type: 'string', default: '40' },
       seed: { type: 'string', default: '1' },
       out: { type: 'string', default: 'models/baselines.json' },
+      gods: { type: 'string' },
     },
   });
   const specStrings = values.players.split(/\s+/).filter(Boolean);
   if (specStrings.length < 2)
     throw new Error('calibrate needs at least two players');
   const specs = specStrings.map(parsePlayerSpec);
+  const gods = parseGodsFlag(values.gods);
+  assertNoCkptWithGods(specs, gods);
   const names = specs.map(nameOf);
   const games = int('games', values.games);
   const seed = int('seed', values.seed);
 
+  console.log(`configuration: ${describeGods(gods)}`);
   const results: PairResult[] = [];
   let pairIndex = 0;
   for (let i = 0; i < specs.length; i++) {
@@ -236,6 +297,8 @@ function cmdCalibrate(args: string[]): void {
         specs[j],
         games,
         seed + SEED_STRIDE * pairIndex++,
+        undefined,
+        gods,
       );
       results.push({
         a: names[i],
@@ -253,7 +316,7 @@ function cmdCalibrate(args: string[]): void {
 
   const anchor = names.includes('random') ? 'random' : names[0];
   const ratings = fitElo(results, { anchor, anchorRating: 0 });
-  console.log(`\nfitted Elo (${anchor} = 0):`);
+  console.log(`\nfitted Elo (${anchor} = 0) [${describeGods(gods)}]:`);
   const order = [...names].sort((a, b) => ratings[b] - ratings[a]);
   for (const name of order)
     console.log(`  ${name.padEnd(12)} ${Math.round(ratings[name])}`);
@@ -263,6 +326,8 @@ function cmdCalibrate(args: string[]): void {
     calibratedAt: new Date().toISOString(),
     seed,
     gamesPerPair: games,
+    gods,
+    configTier: configTier(gods[0], gods[1]),
     players: names.map((name, i) => ({
       name,
       spec: specStrings[i],
@@ -283,20 +348,41 @@ function cmdGauntlet(args: string[]): void {
       seed: { type: 'string', default: '1' },
       baselines: { type: 'string', default: 'models/baselines.json' },
       update: { type: 'boolean', default: false },
+      gods: { type: 'string' },
     },
   });
   if (positionals.length !== 1)
     throw new Error('gauntlet needs exactly one player spec');
   const spec = parsePlayerSpec(positionals[0]);
+  const gods = parseGodsFlag(values.gods);
   const name = nameOf(spec);
   const games = int('games', values.games);
   const seed = int('seed', values.seed);
   const baselines = readBaselines(values.baselines);
+  const oppSpecs = baselines.players.map((b) => parsePlayerSpec(b.spec));
+  assertNoCkptWithGods([spec, ...oppSpecs], gods);
+
+  const tier = configTier(gods[0], gods[1]);
+  console.log(`configuration: ${describeGods(gods)}`);
+  if (baselines.configTier !== undefined && baselines.configTier !== tier) {
+    console.warn(
+      `warning: baselines were calibrated at configuration tier ` +
+        `'${baselines.configTier}' but this gauntlet run uses '${tier}' — ` +
+        `ratings across different configuration tiers are not comparable ` +
+        `(issues #22/#26/#27).`,
+    );
+  }
 
   const lines: GauntletLine[] = [];
   baselines.players.forEach((baseline, k) => {
-    const oppSpec = parsePlayerSpec(baseline.spec);
-    const r = playPair(spec, oppSpec, games, seed + SEED_STRIDE * k);
+    const r = playPair(
+      spec,
+      oppSpecs[k],
+      games,
+      seed + SEED_STRIDE * k,
+      undefined,
+      gods,
+    );
     lines.push({
       opponent: baseline.name,
       rating: baseline.rating,
@@ -313,7 +399,7 @@ function cmdGauntlet(args: string[]): void {
 
   const rating = performanceRating(lines);
   console.log(
-    `\n${name} performance rating: ${Math.round(rating)} ` +
+    `\n${name} performance rating: ${Math.round(rating)} [${describeGods(gods)}] ` +
       `(scale: ${baselines.players.map((p) => `${p.name}=${Math.round(p.rating)}`).join(', ')})`,
   );
 
