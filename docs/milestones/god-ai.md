@@ -59,7 +59,7 @@ sharing an endpoint yield identical states), so features-v2 alone makes
 them trainable. Slice-1 checkpoints are **disposable pipeline-validation
 artifacts** — do not ship them.
 
-### T1 — static eval god win-condition fix (issue #20) — `ready`
+### T1 — static eval god win-condition fix (issue #20) — `in-progress(fix/eval-god-wins)`
 - Goal: `packages/ai/src/eval.ts` must stop scoring god win conditions
   inversely. Pan first (descent-win term; level-3 no longer scored below
   level-2 for a Pan player); audit all 10 simple gods with scratchpad
@@ -88,7 +88,7 @@ artifacts** — do not ship them.
   plus a replay-verified god-match SGN.
 - Branch: `feat/trainer-god-matches`.
 
-### T3 — feature encoding v2 (issue #18) — `ready`
+### T3 — feature encoding v2 (issue #18) — `in-progress(feat/features-v2)`
 - Goal: implement `docs/milestones/god-ai-encoding-v2.md` § features:
   `FEATURE_COUNT_V2 = 295`, god one-hots by rulebook index, state flags,
   new eval types `mlp@2`/`pv@2`, shared `packages/ai/src/encoding.ts`
