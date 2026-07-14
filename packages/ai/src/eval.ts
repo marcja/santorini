@@ -1,5 +1,5 @@
 import type { GameState, Player } from '@santorini/engine';
-import { colOf, NEIGHBORS, rowOf } from '@santorini/engine';
+import { colOf, GODS, NEIGHBORS, rowOf } from '@santorini/engine';
 
 /** Tunable parameters of the static eval — what a `static@1` checkpoint persists. */
 export interface EvalWeights {
@@ -27,6 +27,27 @@ export type EvalFn = (state: GameState, me: Player) => number;
 export const EVAL_SCALE = 150;
 
 /**
+ * `heightScore[3]` is deliberately below `heightScore[2]` for the base game:
+ * a worker *on* level 3 without having just moved up there this turn is
+ * inert (it can't move up further, and the rulebook's "moved up" win check
+ * is about the move, not the resting square — see `docs/reference/
+ * rulebook.md` and the CLAUDE.md note on forced level-3 moves not winning).
+ * That ordering is backwards for a god whose win condition is triggered by
+ * *descending* two or more levels (Pan, `winOnDescend2`): standing on level
+ * 3 is what makes the descent-win threat live (a drop to level 1 or 0 both
+ * qualify), so it should score at least as well as level 2, not worse.
+ * This is the minimal fix for issue #20 — it only touches the one height
+ * that was actively adversarial to a real win condition, not a general
+ * Pan-strategy evaluator.
+ */
+function heightScoreFor(owner: GameState['gods'][number], w: EvalWeights) {
+  if (!GODS[owner].winOnDescend2) return w.heightScore;
+  const adjusted = w.heightScore.slice();
+  adjusted[3] = Math.max(adjusted[2], adjusted[3]);
+  return adjusted;
+}
+
+/**
  * Static evaluation of a position from `me`'s perspective; higher is better.
  * Terms: worker heights, centrality, and reachable climbs (adjacent squares
  * exactly one level up). Intentionally cheap — this is the greedy baseline
@@ -41,9 +62,11 @@ export function evaluate(
   for (let i = 0; i < 4; i++) {
     const sq = state.workers[i];
     if (sq < 0) continue;
-    const sign = i >> 1 === me ? 1 : -1;
+    const owner = i >> 1;
+    const sign = owner === me ? 1 : -1;
     const h = state.heights[sq];
-    let s = w.heightScore[h];
+    const heightScore = heightScoreFor(state.gods[owner], w);
+    let s = heightScore[h];
     s +=
       w.centerWeight *
       (2 - Math.max(Math.abs(colOf(sq) - 2), Math.abs(rowOf(sq) - 2)));
