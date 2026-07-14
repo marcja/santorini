@@ -33,6 +33,11 @@ High-performance, headless, dependency-free TypeScript library.
       for the bonus branch — `MoveTurn.otherPath` plus an SGN `~` segment —
       since it's the first god where a turn can move the worker that
       *isn't* the one selected/built with; see `docs/NOTATION.md`.
+- [x] God tier/configuration identity (issue #26, 2026-07-14):
+      `GodConfig.tier` (`simple | advanced` — advanced declared, none
+      implemented) + rulebook `index`, and `configTier(a, b)` →
+      `base | simple | advanced`, the configuration scope that ratings and
+      training data are recorded under.
 - [ ] Advanced gods (index 11–30), then Golden Fleece/Hero powers as needed.
 - [x] Test coverage of rules, gods, notation round-trips, and random-playout
       invariants (55 tests, incl. an adversarial-review-driven joint-BFS
@@ -74,6 +79,24 @@ Separate offline app; the AI teaches itself via adversarial self-play.
       threats found) that the coach layer turns into human explanations.
       (`search()` returns visits/values/PV; `coach.ts` adds threat
       extraction, post-move review, and narration — slice 4a, 2026-07-11.)
+- [ ] **God-aware AI retraining milestone** (issues #17–#21, #26–#27;
+      task DAG + loop protocol in `docs/milestones/god-ai.md`; frozen
+      encoding spec in `docs/milestones/god-ai-encoding-v2.md`):
+  - [x] Phase 0 (2026-07-14): tier/configuration identity (#26),
+        TRAINING.md rules-surface advisory (#27, incl. gen-007 pinned +
+        `models/v2/` lineage + matchup-panel promotion rule), "(base
+        game)" Elo label (#22 cheap half), encoding-v2 manifest frozen,
+        CLAUDE.md delegation guardrails.
+  - [ ] Slice 1 — "free five" pipeline proof: eval god-win fix (#20),
+        trainer `--gods` CLI (#21), features v2 (#18), self-play god
+        wiring (thin #17), disposable trial generation + wall-clock
+        measurement.
+  - [ ] Slice 2 — policy v2 factorized heads (#19), full 9-god training
+        run, matchup-panel validation, adversarial reviews (closes #17).
+  - [ ] Slice 3 — Hermes fast-follow: throughput measurement/fix (#36),
+        pool inclusion; web two-worker UI (#35) trails independently.
+  - [ ] Slice 4 — god-draft AI: matchup matrix + minimax draft with
+        seeded softmax temperature (issue to be filed).
 - [x] Strength ladder: frozen checkpoints at increasing strength = difficulty
       levels. `models/ladder.json` (`santorini-ladder@1`): Beginner=random(0),
       Easy=mcts:200(657), Medium=greedy(808), Hard=ckpt:gen-005(841),

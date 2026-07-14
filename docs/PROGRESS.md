@@ -1,6 +1,6 @@
 # Progress
 
-_Last updated: 2026-07-12 (session 13)_
+_Last updated: 2026-07-14 (session 14)_
 
 ## Done
 
@@ -513,6 +513,39 @@ _Last updated: 2026-07-12 (session 13)_
   51/51 engine tests green) so a future refactor can't silently regress it.
   No code change to Pan itself was needed.
 
+- **(this session) God-aware AI milestone: Phase 0 landed — configuration
+  identity, guardrails, and the frozen encoding spec.** Plan reviewed and
+  restructured into vertical slices (details + task DAG in
+  `docs/milestones/god-ai.md`; the loop protocol there is the resumable
+  driver for the whole milestone). Landed in one PR:
+  - `GodConfig.tier` (`'simple' | 'advanced'`, advanced declared but
+    unimplemented) + `.index` (rulebook 1–10) + `configTier(a, b)` →
+    `'base' | 'simple' | 'advanced'` — the configuration identity ratings
+    and training scope hang off (issue #26, scoped narrowly). 2 new engine
+    tests (57 green).
+  - `docs/TRAINING.md` § "When the rules surface grows" (issue #27):
+    encoding bumps are checkpoint-format events; gen-007 pinned as the
+    permanent base-game reference; god lineage restarts at
+    `models/v2/gen-000` with eval types `mlp@2`/`pv@2`; ratings are
+    configuration-scoped; ladder.json schema bump explicitly deferred to
+    issue #22's follow-up; matchup-panel promotion rule; warm-start net
+    surgery documented as the retrain-cost escape hatch.
+  - `docs/milestones/god-ai-encoding-v2.md`: **frozen** v2 spec — features
+    295 (v1's 175 + 2×56 god one-hot sized for the full 1–55 rulebook
+    index + 2×4 state flags), policy = 6 factorized heads / 83 logits
+    (incl. Hermes's other-worker head, so deferring Hermes is not a later
+    format bump). Key analysis: Pan/Athena/Apollo/Minotaur/Artemis need
+    **no** policy change (their turns are position-unambiguous under v1's
+    225-way space), which is what makes the slice-1 "free five" trial
+    possible before the policy work.
+  - apps/web difficulty picker now labels Elo "(base game)" (issue #22's
+    cheap half; verified in the in-app browser).
+  - CLAUDE.md conventions: subagents may now implement rules/training-
+    critical code inside driven loops, but only under three enforced
+    guardrails (pre-written differential script, adversarial review
+    Workflow for semantics changes, main-loop independent verification of
+    diffs/tests); design decisions stay in the main loop.
+
 ## Next
 
 **Sequencing decision (2026-07-11):** cap AI training at a bounded
@@ -541,19 +574,22 @@ rungs (random 0 / mcts(200) 657 / greedy 808 / gen-003 903).
 6. ~~Return to AI: PUCT priors (policy head over full-turn actions), more
    games/generation, regularization~~ — done (see Done above; all three
    levers landed and validated: gen-006/007, gauntlet 1001/1132).
-7. Keep the training loop turning (optional, cheap): **the full recipe,
-   decision rules, app-shipping steps, and plateau levers are documented in
-   `docs/TRAINING.md`** — one `trainer train` command per generation
-   (~15 min + eval), stop after two consecutive failures to beat the
-   parent. Watch in-browser Expert latency (PUCT pays a policy forward per
-   expansion, roughly 2× per move — fine today); a web worker becomes
-   worthwhile if budgets rise ~10×.
-8. Engine's simple-god set is now complete (10/10, this session). Two
-   follow-ups worth filing as GitHub issues (blocked this session — see
-   Done above): apps/web needs a two-worker move UI before Hermes can be
-   unhidden from the pickers; issue #26 should be updated to say 10/10
-   engine coverage instead of 9/10. Advanced gods (index 11–30) are the
-   next engine-side milestone per issue #26's suggested direction.
+7. ~~Keep the training loop turning~~ — superseded by the god-aware
+   milestone below; base-game-lineage training is capped at gen-007
+   (pinned as the permanent base-game reference, see TRAINING.md § "When
+   the rules surface grows").
+8. ~~File Hermes follow-ups~~ — done (#35 filed, #26 updated).
+9. **Current milestone: god-aware AI retraining** (issues #17–#21, #26,
+   #27, #35, #36). Phase 0 done (this session). The full task DAG, loop
+   protocol, statuses, and frozen decisions live in
+   **`docs/milestones/god-ai.md`** — that file (plus `gh pr list`) is the
+   resumable state; start there. Next ready tasks: T1 (eval god-win fix),
+   T2 (trainer `--gods` CLI), T3 (features v2), T10 (Hermes bench). A
+   god-draft-AI GitHub issue still needs filing (human action — see
+   Slice 4 in the milestone file).
+10. Follow-on milestone after that: ship the god-aware checkpoint to
+    apps/web (coach repoint #24, ladder rungs, in-browser god-game
+    verification, then #22 long-term/#23/#25).
 
 ## Decisions / notes
 

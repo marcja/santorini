@@ -116,6 +116,63 @@ append only if the ladder's spacing wants an extra step (~150+ Elo gap).
   a11y refs beat coordinates for clicks, and re-read the page after every
   render (refs go stale; the viewport reflows).
 
+## When the rules surface grows (gods, expansions) — read before touching encodings
+
+Adding gods (or, later, Golden Fleece / Heroes) to training is a
+**checkpoint-format event, not a recipe tweak**. This section is written
+generically: it applies again at every rules-surface expansion (advanced
+gods, heroes), not just the simple-god milestone (issues #17–#21, #26,
+#27; milestone plan in `docs/milestones/god-ai.md`).
+
+1. **Checkpoint compatibility is pinned to encodings.** `mlp@1`/`pv@1` pin
+   feature encoding v1 (175 planes, no god info) and action encoding v1
+   (225 actions). God-aware training requires new eval types (`mlp@2`/
+   `pv@2` — spec frozen in `docs/milestones/god-ai-encoding-v2.md`). Old
+   checkpoints cannot be fine-tuned onto a new encoding by loading them —
+   a new-encoding lineage either starts from scratch or uses **warm-start
+   net surgery**: when a bump only *adds* input features or action logits,
+   graft the old weights and zero-init the new rows/columns (the same idea
+   as the existing `mlp@1`→`pv@1` zero-policy-head warm start). Document
+   whichever you do in the checkpoint's notes.
+2. **gen-007 is pinned as the permanent base-game reference lineage**
+   (decision 2026-07-14). It is never fine-tuned onto a new encoding. The
+   god-aware lineage lives under `models/v2/` with a fresh counter
+   (`models/v2/gen-000.json`, eval types `mlp@2`/`pv@2`). Keep gen-005 and
+   gen-007 (shipped ladder rungs and frozen rating anchors); older gens
+   are disposable.
+3. **Ratings are configuration-scoped.** Every number in
+   `models/baselines.json`, every gauntlet rating stamped in a checkpoint,
+   and every Elo in `models/ladder.json` was measured in **base-game**
+   play. They do not transfer to god games, and mixing configurations in
+   one Elo pool produces meaningless numbers. Record the configuration
+   tier (`configTier()` in the engine: base / simple / advanced) alongside
+   any rating; recalibrate per configuration; never compare across
+   configurations — a v2 net's simple-tier rating is not on the same
+   footing as gen-007's 1132.
+4. **`models/ladder.json` schema stays at `santorini-ladder@1` for this
+   milestone** (decision 2026-07-14): per-configuration ladder ratings are
+   deferred to issue #22's long-term follow-up, once the trainer CLI
+   (issue #21) produces configuration-scoped numbers worth storing. Until
+   then the web app labels ladder Elo "(base game)".
+5. **The decision rule needs a configuration story.** "Beats its parent
+   ≥14–10 over 24 games" applies **per configuration**. Since all-pairings
+   coverage is unaffordable per generation, evaluate on a fixed seeded
+   **matchup panel** — e.g. base mirror, Pan mirror, Athena mirror, and
+   two mixed pairs, 24 games each — and promote only if the aggregate
+   clears the bar with no panel configuration regressing badly. Freeze the
+   exact panel in `docs/milestones/god-ai.md` before the first v2 run and
+   keep it stable across generations. The ≥20-game floor (mistake log)
+   multiplies across the panel; budget eval time accordingly.
+6. **Shipping checklist addition.** When bundling a god-aware model,
+   `coachCkpt` and ladder rungs may need to differ per configuration, and
+   the in-browser verification pass must include at least one god game.
+7. **Before the first god-aware run**, timebox a small trial generation to
+   measure the wall-clock multiplier vs the ~15–40 min/gen base-game
+   baseline, and size the real run from that measurement. Hermes is
+   excluded from the initial pool until his ~180x `legalTurns()` cost
+   (issue #36) is measured/fixed — MCTS expands every legal turn as a
+   child node.
+
 ## If training plateaus again — ordered levers
 
 Cheapest and most likely first. Change one at a time; 24-game head-to-head
@@ -156,7 +213,9 @@ with the same-recipe control before believing anything.
 9. **Encoding v2**: add feature planes the net currently can't see —
    per-worker identity planes (would also unlock a worker-indexed action
    encoding), adjacency-to-climb counts, god flags once gods enter
-   training. Requires a new eval type (`mlp@1`/`pv@1` pin encoding v1).
+   training. Requires a new eval type (`mlp@1`/`pv@1` pin encoding v1) —
+   see "When the rules surface grows" above and the frozen v2 spec in
+   `docs/milestones/god-ai-encoding-v2.md` before touching this.
 
 Known-good lessons to keep honoring: 8-symmetry augmentation on (it broke
 the first plateau), mild fitting over low loss, deterministic seeds,

@@ -12,7 +12,14 @@ export {
   squareName,
 } from './board.ts';
 export { Game } from './game.ts';
-export { GOD_IDS, GODS, type GodConfig, godIdByName } from './gods/index.ts';
+export {
+  type ConfigTier,
+  configTier,
+  GOD_IDS,
+  GODS,
+  type GodConfig,
+  godIdByName,
+} from './gods/index.ts';
 export { hasLegalTurn, legalTurns } from './movegen.ts';
 export {
   formatSGN,
