@@ -583,8 +583,10 @@ rungs (random 0 / mcts(200) 657 / greedy 808 / gen-003 903).
    #27, #35, #36). Phase 0 done (this session). The full task DAG, loop
    protocol, statuses, and frozen decisions live in
    **`docs/milestones/god-ai.md`** — that file (plus `gh pr list`) is the
-   resumable state; start there. Next ready tasks: T1 (eval god-win fix),
-   T2 (trainer `--gods` CLI), T3 (features v2), T10 (Hermes bench).
+   resumable state; start there. In progress: T1 (eval god-win fix,
+   `fix/eval-god-wins`) and T3 (features v2, `feat/features-v2`), both
+   dispatched to subagents 2026-07-14. Next ready after those land: T2
+   (trainer `--gods` CLI), T10 (Hermes bench).
    Issues synced to the plan 2026-07-14: alignment comments on #17–#26 +
    #35/#36, #27 closed as delivered, god-draft AI filed as #39.
 10. Follow-on milestone after that: ship the god-aware checkpoint to
