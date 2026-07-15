@@ -88,7 +88,7 @@ artifacts** — do not ship them.
   plus a replay-verified god-match SGN.
 - Branch: `feat/trainer-god-matches`.
 
-### T3 — feature encoding v2 (issue #18) — `review(#44)`
+### T3 — feature encoding v2 (issue #18) — `done(#44)`
 - Goal: implement `docs/milestones/god-ai-encoding-v2.md` § features:
   `FEATURE_COUNT_V2 = 295`, god one-hots by rulebook index, state flags,
   new eval types `mlp@2`/`pv@2`, shared `packages/ai/src/encoding.ts`
@@ -102,25 +102,42 @@ artifacts** — do not ship them.
 - Rigor: training-critical → differential script before/after; T4 review
   before done; main loop reads the diff. Branch: `feat/features-v2`.
 
-### T4 — adversarial review of T3 — `in-progress(workflow wf_f9566364-47e)`
+### T4 — adversarial review of T3 — `done`
 - Dynamic Workflow: adversarial correctness reviewer (against the manifest
   + `docs/reference/rulebook.md` for the state-flag semantics, instructed
   to construct counterexamples) + implementation-quality reviewer + fixer;
   independently re-verify the fixer's output (CLAUDE.md guardrails).
-  Record the Workflow runId here when launched.
 - First attempt 2026-07-14, run ID `wf_84fc6910-e92`: both review agents
   failed with "monthly spend limit" API errors before producing any
   findings (journal.jsonl showed `started` with no result for either
   agent — confirmed dead, not resumable).
-- **Relaunched fresh 2026-07-14 (next session), run ID `wf_f9566364-47e`**,
-  same script (`god-ai-t4-review-wf_84fc6910-e92.js`), against PR #44
-  (`feat/features-v2`). Resume with `resumeFromRunId: wf_f9566364-47e` if
-  interrupted — check `journal.jsonl` first; if agent entries show `null`
-  again, the spend limit is still in effect and this needs the user to
-  raise it at claude.ai/settings/usage before another attempt. PR #44
-  remains a draft, untouched, pending this.
+- **Relaunched fresh 2026-07-14 (next session), run ID `wf_f9566364-47e`**:
+  correctness reviewer genuinely attempted all 6 counterexamples from the
+  manifest (offset arithmetic, v1-prefix bit-identity, symmetry suffix
+  pass-through, augment suffix replication, Athena flag semantics traced
+  through real engine games, checkpoint.ts validation/throw behavior) and
+  could not break any — verdict `clean`. Quality reviewer found one real
+  gap (test coverage never exercised both-sides-hold-Athena, where
+  `MOVER_FLAGS_OFFSET`/`OPPONENT_FLAGS_OFFSET` necessarily collapse to the
+  same bit since both derive from the single engine-wide `state.athenaUp`)
+  plus 2 nits. Fixer added a test-only fix (`features.test.ts`, both-Athena
+  collapse + reserved-flags-zero + pan/none-vs-none-differs cases) — no
+  production code changed — and flagged the collapse-under-duplicate-gods
+  question as a hypothetical open item (duplicate god assignment is
+  unreachable in a real game per rulebook card uniqueness, so it has zero
+  effect on real training data).
+- **Main-loop independent verification** (not just the fixer's summary):
+  fetched PR #44 tip (`f80403d`) into a fresh worktree, read the full diff
+  of `encoding.ts`/`features.ts`/`checkpoint.ts`/`index.ts` personally,
+  cross-checked `athenaFlag`'s derivation against `apply.ts`'s
+  `s.athenaUp = movedUp` (written only when `cfg.blocksOpponentUp`) and
+  `movegen.ts`'s `upBlocked: !!oppCfg.blocksOpponentUp && state.athenaUp` —
+  matches. Reran `npm run typecheck && npm run lint && npm test` myself
+  from clean: typecheck clean, lint clean (35 files), 179/179 tests green
+  (ai 112, engine 57, trainer 10). PR #44 merged as `T3 done(#44)`.
+  Stale merged worktrees from T1/T2/T3/both T4 attempts cleaned up.
 
-### T5 — self-play god wiring (thin slice of issue #17) — `blocked(T3)`
+### T5 — self-play god wiring (thin slice of issue #17) — `ready`
 - Goal: `gods?: [GodId, GodId]` on `SelfPlayConfig` threaded to
   `createInitialState`; `--gods a,b` **and** a pool-sampling mode
   (`--god-pool none,pan,athena,apollo,minotaur,artemis` → seeded matchup
@@ -142,7 +159,7 @@ artifacts** — do not ship them.
 
 ## Slice 2 — policy v2 and the real run
 
-### T7 — policy encoding v2 (issue #19) — `blocked(T3)`
+### T7 — policy encoding v2 (issue #19) — `ready`
 - Goal: implement the manifest's factorized heads (83 logits, 6 heads) in
   `policy.ts`/`pvnet.ts`/`selfplay.ts` targets; symmetry-consistent
   per-head transforms; per-head masked CE; priors = product over heads.

@@ -593,14 +593,35 @@ rungs (random 0 / mcts(200) 657 / greedy 808 / gen-003 903).
    `God2` headers, configuration-tier labels on ratings, and an explicit
    rejection of `ckpt:` player specs under non-base `--gods` (features v1
    has no god planes — would silently play god-blind until encoding v2).
-   **T3 (features v2, PR #44) implemented and independently verified**
-   (typecheck/lint/test rerun, full diff read: `FEATURE_COUNT_V2 = 295`,
-   offsets match the frozen manifest, Athena flag derivation checked
-   against `apply.ts`/`movegen.ts` semantics); in `review` pending T4's
-   adversarial-review Workflow (`wf_84fc6910-e92`, launched 2026-07-14)
-   before merge, per the milestone's training-critical-code rigor. Next
-   ready after T4 lands: T10 (Hermes bench); T5 (self-play god wiring)
-   unblocks once T3 merges.
+   **T3+T4 done (#44, 2026-07-15):** feature encoding v2 merged.
+   `FEATURE_COUNT_V2 = 295`, god one-hots + persistent-state flags,
+   `mlp@2`/`pv@2` eval types, shared `packages/ai/src/encoding.ts`
+   constants module. T4's adversarial-review Workflow's first attempt
+   died to an account spend-limit error with no results (relaunched
+   fresh rather than resumed dead nulls); the relaunch's correctness
+   reviewer genuinely attempted all 6 manifest counterexamples and broke
+   none, the quality reviewer found a real test-coverage gap (both sides
+   holding Athena — the flag necessarily collapses to one shared bit,
+   since it derives from the engine's single `state.athenaUp`), and the
+   fixer closed it with a test-only change. Main loop independently
+   reread the full diff, cross-checked `athenaFlag` against
+   `apply.ts`/`movegen.ts`, and reran typecheck/lint/test from a clean
+   worktree (179/179 green) before merging — did not accept the fixer's
+   summary as verification, per CLAUDE.md.
+   **T10 measured (2026-07-15, scratchpad-only, no code deliverable):**
+   Hermes/Hermes throughput is 15–130x slower than base depending on
+   game phase, and MCTS search degenerates to zero-lookahead in
+   wide-open Hermes positions (legalTurns(root) exceeds the iteration
+   budget, so every iteration expands a new root child). Recommendation:
+   optimize `hermesJointReachable`/`emitHermesBuildsFor` (issue #36)
+   before Hermes joins the self-play pool. **Awaiting human sign-off**
+   on this (Hermes pool inclusion is a design decision, not the loop's
+   to make) — see `docs/milestones/god-ai.md` T10.
+   **T12 (Hermes web UI) in progress** as a background subagent.
+   **T5 (self-play god wiring) ready and picked up** this session now
+   that T3 has merged; T7 (policy encoding v2) is also unblocked but
+   shares `selfplay.ts` with T5 so it's held for a later iteration
+   rather than run in parallel.
    Issues synced to the plan 2026-07-14: alignment comments on #17–#26 +
    #35/#36, #27 closed as delivered, god-draft AI filed as #39.
 10. Follow-on milestone after that: ship the god-aware checkpoint to
