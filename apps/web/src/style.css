@@ -11,6 +11,7 @@
   --build: #f97316;
   --danger: #ef4444;
   --coach: #c084fc;
+  --worker2: #2dd4bf;
   font-family: "Avenir Next", "Segoe UI", system-ui, sans-serif;
 }
 
@@ -427,6 +428,11 @@ button:disabled {
   opacity: 0.35;
   cursor: default;
   filter: none;
+}
+
+#move-other.active {
+  background: var(--worker2);
+  color: #042f2e;
 }
 
 .replay {
