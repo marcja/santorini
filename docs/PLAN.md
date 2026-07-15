@@ -87,10 +87,14 @@ Separate offline app; the AI teaches itself via adversarial self-play.
         `models/v2/` lineage + matchup-panel promotion rule), "(base
         game)" Elo label (#22 cheap half), encoding-v2 manifest frozen,
         CLAUDE.md delegation guardrails.
-  - [ ] Slice 1 — "free five" pipeline proof: eval god-win fix (#20),
+  - [x] Slice 1 — "free five" pipeline proof: eval god-win fix (#20),
         trainer `--gods` CLI (#21), features v2 (#18), self-play god
         wiring (thin #17), disposable trial generation + wall-clock
-        measurement.
+        measurement. Done (2026-07-14): `models/v2/gen-000/gen-001.json`
+        (disposable), 1.44x wall-clock multiplier vs a same-session
+        base-game control, configuration-scoped gauntlet ratings
+        (none/none 805, pan/pan 841, athena/athena 757, apollo/minotaur
+        757 — see PROGRESS.md for the cross-tier-baseline caveat).
   - [ ] Slice 2 — policy v2 factorized heads (#19), full 9-god training
         run, matchup-panel validation, adversarial reviews (closes #17).
   - [ ] Slice 3 — Hermes fast-follow: throughput measurement/fix (#36),

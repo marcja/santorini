@@ -162,7 +162,7 @@ artifacts** — do not ship them.
   exists yet to create an `mlp@2`/`pv@2` parent checkpoint — T6 will need
   to originate the first v2 lineage itself.
 
-### T6 — slice-1 trial generation — `ready`
+### T6 — slice-1 trial generation — `done` (this session, PR pending)
 - Goal: fresh `models/v2/gen-000` (from static parent, v2 encoding),
   small run (e.g. 200 games) over base + the free five via `--god-pool`;
   measure wall-clock multiplier vs the ~15–40 min baseline (TRAINING.md
@@ -178,6 +178,26 @@ artifacts** — do not ship them.
   `FEATURE_COUNT_V2`, wrapped via `createCheckpoint` with `eval.type:
   'mlp@2'`), following the same shape T5's own test harness used to
   construct a synthetic `mlp@2` checkpoint for verification.
+- **Delivered:** `scripts/god-ai-v2-trial.ts` (standalone, resumable —
+  composes `Mlp`/`selfPlay` directly rather than `trainer train
+  --god-pool`, since that path's `assertV2TrainingSupported` guard
+  rejects any `mlp@2` parent before self-play; this trial only needs a
+  value-only net, no policy head). `models/v2/gen-000.json` (fresh
+  He-init `mlp@2`, hidden=64 seed=0) → `models/v2/gen-001.json`
+  (self-play 200 games @ mcts(600), `--god-pool
+  none,pan,athena,apollo,minotaur,artemis`, seed 1, 8-symmetry
+  augmentation, all 200 games replay-verified). **Wall-clock
+  multiplier: 1.44x** (base-game control 101.4s vs god-pool trial 146.0s,
+  same 200-game count, same-machine same-session control — not the
+  possibly-stale TRAINING.md baseline). **Gauntlet ratings** (20
+  games/opponent, seed 1, vs `models/baselines.json`): `none,none` 805,
+  `pan,pan` 841, `athena,athena` 757, `apollo,minotaur` 757 — caveat:
+  `models/baselines.json` predates T2's `configTier` field (calibrated
+  before #45), so these are cross-tier comparisons in practice (no
+  per-tier recalibration was done for this disposable trial; T9's full
+  validation is where that belongs). Full detail + caveats in
+  PROGRESS.md. Verification: typecheck/lint clean, 201/201 tests green.
+  **Slice 1 is now complete end to end.**
 
 ## Slice 2 — policy v2 and the real run
 

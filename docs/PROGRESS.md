@@ -1,6 +1,6 @@
 # Progress
 
-_Last updated: 2026-07-14 (session 14)_
+_Last updated: 2026-07-14 (session 15)_
 
 ## Done
 
@@ -545,6 +545,62 @@ _Last updated: 2026-07-14 (session 14)_
     guardrails (pre-written differential script, adversarial review
     Workflow for semantics changes, main-loop independent verification of
     diffs/tests); design decisions stay in the main loop.
+- **(this session) T6 — slice-1 trial generation complete; Slice 1 ("free
+  five" pipeline proof) is now fully proven end to end.** No tooling
+  existed to originate an `mlp@2` parent checkpoint (T5's flag), so
+  `scripts/god-ai-v2-trial.ts` was written as a standalone, resumable
+  script (skips gen-000/gen-001 creation if they already exist) that
+  composes `Mlp`/`selfPlay` directly rather than going through `trainer
+  train --god-pool`, since T5's `assertV2TrainingSupported` guard rejects
+  any `mlp@2`/`pv@2` parent before self-play (net-training still assumes
+  v1 dims — this trial only needs a value-only net, no policy head, so it
+  never needs that guard loosened).
+  - `models/v2/gen-000.json`: fresh (untrained) `mlp@2` net, He-init
+    hidden=64 seed=0, over `FEATURE_COUNT_V2` (295-wide). DISPOSABLE
+    pipeline-validation parent — mirrors the v1 lineage shape but starts
+    from a fresh net since no static eval understands the god one-hot
+    planes.
+  - `models/v2/gen-001.json`: self-play 200 games @ mcts(600) from
+    gen-000, `--god-pool none,pan,athena,apollo,minotaur,artemis` (seed
+    1, the free-five gods needing no policy-encoding change per T3), 8-
+    symmetry augmentation, value-only `mlp@2` (no policy head — policy
+    encoding v2/T7 not landed). All 200 self-play games replay-verified
+    (SGN round-trip, winner matches) before training.
+  - **Wall-clock multiplier (measured, same-machine control, this run's
+    own hardware/session — not the possibly-stale TRAINING.md baseline):**
+    base-game control (200 games, gods none/none) 101.4s; god-pool trial
+    (same 200 games, free-five pool) 146.0s; **multiplier 1.44x**. Well
+    under the "tens of minutes to multiple hours" territory T10 measured
+    for Hermes — the free five stay cheap, consistent with T3's finding
+    that they need no policy-encoding change.
+  - **Configuration-scoped gauntlet ratings** (20 games/opponent, seed 1,
+    `trainer gauntlet ckpt:models/v2/gen-001.json --gods <g1,g2>`, vs the
+    existing `models/baselines.json` calibrated 2026-07-11 at base tier):
+    - `none,none` (base): **805** — 20–0 random, 9–11 greedy, 17–3
+      mcts(200), 5–15 mcts(1000).
+    - `pan,pan` (simple): **841** — 20–0, 7–13, 18–2, 9–11.
+    - `athena,athena` (simple): **757** — 20–0, 10–10, 13–7, 4–16.
+    - `apollo,minotaur` (simple): **757** — 20–0, 6–14, 14–6, 7–13.
+    - Caveat: `models/baselines.json` predates T2's `configTier`/`gods`
+      fields (calibrated before #45 landed), so `gauntlet` prints no
+      cross-tier warning even though the three `simple`-tier rows above
+      are being scored against a `base`-tier-calibrated pool — per
+      issues #22/#26/#27 these numbers are directionally useful (same
+      opponent pool, same gen-001 net) but not rigorously comparable
+      across tiers; a real per-tier calibration is in scope for T9's full
+      validation, not this disposable slice-1 trial.
+  - **Explicit reminder (per the script's own header and T6's task card):**
+    every artifact under `models/v2/` from this trial is a DISPOSABLE
+    pipeline-validation artifact — not a real trained generation, do not
+    ship.
+  - Verification: `npm run typecheck` clean, `npm run lint` clean (35
+    files), `npm test` 201/201 green (ai 124, engine 57, trainer 20) —
+    reran from the worktree after the trial completed, not just trusted
+    from an earlier session.
+  - Slice 1 (T1–T6) is now done end to end: eval god-win fix, `--gods`
+    CLI, features v2, self-play god wiring, and this trial all landed.
+    T7 (policy encoding v2) is next; T9 (full 9-god training run) stays
+    blocked on T7+T8.
 
 ## Next
 
@@ -632,9 +688,17 @@ rungs (random 0 / mcts(200) 657 / greedy 808 / gen-003 903).
    silently truncating 295-wide samples to a v1-sized net. Differential
    script confirmed base-game self-play unchanged; main loop reread the
    full diff and reran typecheck/lint/test (199/199 green) before
-   merging. **T6 (slice-1 trial generation) now ready** — needs to
-   originate the first `mlp@2` parent checkpoint itself (T5 flagged that
-   no tooling for this exists yet).
+   merging. **T6 done (this session, PR pending):** slice-1 trial
+   generation — `models/v2/gen-000.json`/`gen-001.json` (disposable),
+   `scripts/god-ai-v2-trial.ts`, wall-clock multiplier 1.44x (base-game
+   control 101.4s vs god-pool trial 146.0s, 200 games @ mcts(600) each),
+   configuration-scoped gauntlet ratings (none/none 805, pan/pan 841,
+   athena/athena 757, apollo/minotaur 757 — see Done above for the
+   cross-tier-baseline caveat). **Slice 1 (T1–T6) is complete** — the
+   "free five" pipeline is proven end to end from eval fix through a
+   trained, rated v2 checkpoint. **T7 (policy encoding v2, issue #19) is
+   now the next `ready` task**; T9 (full 9-god training run) stays
+   `blocked(T6,T7,T8)`.
    Issues synced to the plan 2026-07-14: alignment comments on #17–#26 +
    #35/#36, #27 closed as delivered, god-draft AI filed as #39.
 10. Follow-on milestone after that: ship the god-aware checkpoint to
