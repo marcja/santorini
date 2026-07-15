@@ -179,6 +179,24 @@ describe('encodeFeaturesV2', () => {
     expect(encodeFeaturesV2(moverHasAthena)[OPPONENT_FLAGS_OFFSET]).toBe(0);
   });
 
+  // Both sides holding the same god is unreachable in a real game (each god
+  // card is unique — rulebook §"choose a God Power"/place it — so no two
+  // players can ever hold Athena simultaneously), but the encoder's type
+  // signature does not forbid it and must not crash or silently misbehave.
+  // `athenaFlag` is derived from a single engine-wide `state.athenaUp` bit
+  // gated on "does this side hold Athena", so when BOTH sides hold Athena
+  // that gate is true for both sides at once and the two flags necessarily
+  // collapse to the same value — this test locks in that (documented,
+  // spec-unaddressed) degenerate behavior rather than leaving it uncovered.
+  it('both-Athena: mover and opponent flags necessarily collapse to the same value', () => {
+    for (const athenaUp of [true, false]) {
+      const state = asymmetricGods(['athena', 'athena'], athenaUp);
+      const x = encodeFeaturesV2(state);
+      expect(x[MOVER_FLAGS_OFFSET]).toBe(x[OPPONENT_FLAGS_OFFSET]);
+      expect(x[MOVER_FLAGS_OFFSET]).toBe(athenaUp ? 1 : 0);
+    }
+  });
+
   it('reserved state flags (1-3) are always zero', () => {
     const x = encodeFeaturesV2(asymmetricGods(['athena', 'pan'], true));
     for (const k of [1, 2, 3]) {
