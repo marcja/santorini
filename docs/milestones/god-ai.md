@@ -166,20 +166,45 @@ artifacts** — do not ship them.
 
 ## Slice 3 — Hermes fast-follow
 
-### T10 — Hermes throughput measurement (issue #36) — `in-progress(subagent, this session)`
+### T10 — Hermes throughput measurement (issue #36) — `human(Hermes pool inclusion — optimize movegen first, per measurement below, or override?)`
 - Standalone scratchpad bench (mirror `packages/engine/bench/playouts.ts`)
   + an MCTS-shaped probe (children per expansion at mcts:600). Output: a
   recommendation (include now / optimize first / defer) recorded here as
   `human(...)` for sign-off. A movegen fix, if attempted, is its own task
   with full adversarial review (CLAUDE.md).
 - **Attempted 2026-07-14, inconclusive: the subagent hit the same
-  "monthly spend limit" API error mid-run**, after only an unverified
-  interim remark ("that's a dramatic slowdown for Hermes... rerun to
-  confirm stability") — not a real measurement, don't treat it as one.
-  Nothing was committed (this was a scratchpad-only measurement task
-  with no code deliverable). Re-attempted 2026-07-14 (next session) via
-  a fresh subagent — no code deliverable expected, only a recommendation
-  to record here as `human(...)` once it reports back.
+  "monthly spend limit" API error mid-run** — not a real measurement,
+  discarded.
+- **Measured 2026-07-14 (next session), scratchpad-only, nothing
+  committed.** Full-game playout throughput (base=765.1k turns/s
+  reference): hermes/hermes is 130.0x slower at the initial position,
+  113.7x on an open board, down to 33.5x/15.7x once the board fills up
+  (dome present). Raw `legalTurns()` on an open board: hermes/hermes
+  returns 4848 turns/call at 844 calls/s vs base/base's 36 turns/call at
+  853k calls/s (~1000x fewer movegen calls/s), matching issue #36's
+  reported range exactly.
+- **MCTS-shaped probe** (`MctsPlayer.search()`, iters=600, unmodified
+  `packages/ai/src/mcts.ts`): single-search wall-clock 98x–373x slower
+  with Hermes present. Beyond raw speed, a **search-quality defect**:
+  since `legalTurns(root)` (up to 4848) vastly exceeds the 600-iteration
+  budget, every iteration is consumed expanding new root children and
+  none ever reach depth ≥2 — the search degenerates to "evaluate 600
+  random legal moves" with zero real lookahead, for any Hermes-involving
+  position wide enough that legal-turn count exceeds the iteration
+  budget.
+- **Subagent's recommendation: optimize first.** Per TRAINING.md, a
+  base-game generation is 800 games at iters=600 in ~13 min; the same
+  count with Hermes present would run tens of minutes to multiple hours,
+  and the branching-factor defect above independently makes MCTS
+  structurally unable to look past depth 1 in wide-open Hermes
+  positions at realistic iteration budgets. Suggests fixing
+  `hermesJointReachable`/`emitHermesBuildsFor` (numeric-key BFS,
+  issue #36) or capping MCTS branching, as its own task under full
+  adversarial rules-correctness review, before T11 lets Hermes into
+  self-play.
+- **Awaiting human sign-off** on whether to accept "optimize first" (and
+  spin up a movegen-fix task ahead of T11) or override with a different
+  call. T11 stays `blocked` until this resolves.
 
 ### T11 — Hermes joins the pool — `blocked(T9,T10)` (encoding already reserves H6)
 ### T12 — Hermes two-worker web UI (issue #35) — `in-progress(subagent, this session)` (low priority, independent; in-browser verification required)
