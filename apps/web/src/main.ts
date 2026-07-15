@@ -52,16 +52,15 @@ import './style.css';
 // takes one, the Challenger gets the other → the Challenger chooses the
 // Start Player. A free-pick panel remains as a dev shortcut.
 
-// Turn input is generic (see above) EXCEPT Hermes: its turns can move the
-// worker that *isn't* selected/built with (MoveTurn.otherPath), which the
-// prefix-matching click flow has no way to input. Hide it from the pickers
-// until the UI grows a way to move both workers. Engine + AI/coach support
-// is unaffected — only the human turn-input UI is gated.
-const SELECTABLE_GOD_IDS = GOD_IDS.filter(
-  (id) => id !== 'none' && id !== 'hermes',
-);
+// Turn input is generic (see above), including Hermes: a Hermes turn may
+// also move the worker that *isn't* selected/built with (MoveTurn.otherPath).
+// The "Move worker 2" toggle (`otherMode` below) switches accumulated clicks
+// between extending the selected worker's `path`/`blds` and the companion
+// worker's `otherPath`; compatible()/stepsFor() prefix-match both buffers
+// against legalTurns() the same way.
+const SELECTABLE_GOD_IDS = GOD_IDS.filter((id) => id !== 'none');
 
-type StepKind = 'pre' | 'move' | 'build';
+type StepKind = 'pre' | 'move' | 'moveOther' | 'build';
 interface Step {
   kind: StepKind;
   sq: Square;
@@ -101,6 +100,13 @@ let game = new Game();
 let pre: BuildAction[] = [];
 let path: Square[] = [];
 let blds: BuildAction[] = [];
+// Hermes: the companion (non-selected) worker's own flat-move path, same
+// convention as `path` (start square first). Populated alongside `path`
+// whenever a worker is selected; only extended by clicks while `otherMode`
+// is toggled on. Harmless for non-Hermes turns: it never grows past length
+// 1 there, which compatible()/stepsFor() treat as "no repositioning".
+let otherPath: Square[] = [];
+let otherMode = false; // true while clicks extend otherPath instead of path/blds
 let pendingPlace: Square | null = null; // first of the two setup squares
 let choice: { sq: Square; steps: Step[] } | null = null;
 // Replay: null = live play at the latest position; a number = viewing the
@@ -122,6 +128,7 @@ app.innerHTML = `
         <div class="controls">
           <button id="new">New game</button>
           <button id="undo">Undo</button>
+          <button id="move-other" hidden>Move worker 2</button>
           <button id="finish" hidden>Finish turn</button>
           <button id="cancel" hidden>Cancel</button>
         </div>
@@ -179,6 +186,7 @@ const choiceEl = document.querySelector<HTMLDivElement>('#choice')!;
 const godsEl = document.querySelector<HTMLDivElement>('#gods')!;
 const finishEl = document.querySelector<HTMLButtonElement>('#finish')!;
 const cancelEl = document.querySelector<HTMLButtonElement>('#cancel')!;
+const moveOtherEl = document.querySelector<HTMLButtonElement>('#move-other')!;
 const setupEl = document.querySelector<HTMLDivElement>('#setup')!;
 const undoEl = document.querySelector<HTMLButtonElement>('#undo')!;
 const revStartEl = document.querySelector<HTMLButtonElement>('#rev-start')!;
@@ -448,6 +456,11 @@ cancelEl.addEventListener('click', () => {
   resetSelection();
   render();
 });
+moveOtherEl.addEventListener('click', () => {
+  otherMode = !otherMode;
+  choice = null;
+  render();
+});
 boardEl.addEventListener('click', (e) => {
   const cell = (e.target as Element).closest<SVGGElement>('.cell');
   if (!cell) return;
@@ -675,9 +688,14 @@ function resetSelection(): void {
   pre = [];
   path = [];
   blds = [];
+  otherPath = [];
+  otherMode = false;
   pendingPlace = null;
   choice = null;
 }
+
+/** The other of a player's two workers, given one worker's global index. */
+const companionWorker = (w: number): number => (w % 2 === 0 ? w + 1 : w - 1);
 
 // --- partial-turn matching against legalTurns() ---
 
@@ -706,19 +724,55 @@ function buildsRemaining(
   return left;
 }
 
-/** Is the current partial turn a prefix of legal turn t? */
-function compatible(t: MoveTurn): boolean {
-  if (path.length === 0 || t.path[0] !== path[0]) return false;
+/**
+ * `t.otherPath` if present, else the length-1 "didn't reposition" stand-in
+ * (the companion worker's fixed start square, i.e. our own otherPath[0]).
+ * Lets otherPath prefix-matching treat "no otherPath on t" and "otherPath
+ * that hasn't moved past its start square yet" identically.
+ */
+function tOtherPath(t: MoveTurn): Square[] {
+  return t.otherPath ?? (otherPath.length > 0 ? [otherPath[0]] : []);
+}
+
+/** Is `pre` a prefix of t's pre-builds, consistent with turn order? */
+function preBuildsCompatible(t: MoveTurn): boolean {
   const tPre = t.preBuilds ?? [];
   if (pre.length > tPre.length) return false;
   for (let i = 0; i < pre.length; i++)
     if (!buildEq(pre[i], tPre[i])) return false;
-  // Once the worker has moved, pre-building is over; once it has built,
-  // moving is over (turn order: pre-builds, then path, then builds).
-  if (path.length > 1 && tPre.length !== pre.length) return false;
+  // Once the worker has moved, pre-building is over.
+  return !(path.length > 1 && tPre.length !== pre.length);
+}
+
+/** Is `path` a prefix of t.path? */
+function pathCompatible(t: MoveTurn): boolean {
   if (path.length > t.path.length) return false;
   for (let i = 1; i < path.length; i++) if (path[i] !== t.path[i]) return false;
-  if (blds.length > 0 && path.length !== t.path.length) return false;
+  return true;
+}
+
+/** Is `otherPath` a prefix of t's (real or stand-in) other-worker path? */
+function otherPathCompatible(tOther: Square[]): boolean {
+  if (otherPath.length > tOther.length) return false;
+  for (let i = 1; i < otherPath.length; i++)
+    if (otherPath[i] !== tOther[i]) return false;
+  return true;
+}
+
+/** Is the current partial turn a prefix of legal turn t? */
+function compatible(t: MoveTurn): boolean {
+  if (path.length === 0 || t.path[0] !== path[0]) return false;
+  if (!preBuildsCompatible(t)) return false;
+  if (!pathCompatible(t)) return false;
+  const tOther = tOtherPath(t);
+  if (!otherPathCompatible(tOther)) return false;
+  // Once either worker has built, all movement is over (turn order:
+  // pre-builds, then both workers' movement in any order, then builds).
+  if (
+    blds.length > 0 &&
+    (path.length !== t.path.length || otherPath.length !== tOther.length)
+  )
+    return false;
   return buildsRemaining(t.builds, blds) !== null;
 }
 
@@ -733,12 +787,35 @@ function stepsFor(t: MoveTurn): Step[] {
   if (blds.length === 0 && path.length < t.path.length) {
     out.push({ kind: 'move', sq: t.path[path.length], dome: false });
   }
-  if (path.length === t.path.length) {
+  const tOther = tOtherPath(t);
+  if (blds.length === 0 && otherPath.length < tOther.length) {
+    out.push({ kind: 'moveOther', sq: tOther[otherPath.length], dome: false });
+  }
+  if (path.length === t.path.length && otherPath.length === tOther.length) {
     for (const b of buildsRemaining(t.builds, blds) ?? []) {
       out.push({ kind: 'build', sq: b.at, dome: b.dome });
     }
   }
   return out;
+}
+
+/**
+ * Merges `ss` (the next single actions toward one compatible turn) into
+ * `steps`, deduped. otherMode is a distinct input phase: while toggled on,
+ * only worker-2 repositioning clicks are offered; while off, only the
+ * primary worker's move/build (and pre-build). This keeps the two buffers
+ * unambiguous even when a square would otherwise be a legal target for both.
+ */
+function mergeVisibleSteps(steps: Step[], ss: Step[]): void {
+  for (const s of ss) {
+    if (otherMode ? s.kind !== 'moveOther' : s.kind === 'moveOther') continue;
+    if (
+      !steps.some(
+        (o) => o.kind === s.kind && o.sq === s.sq && o.dome === s.dome,
+      )
+    )
+      steps.push(s);
+  }
 }
 
 /** All next actions across compatible turns, plus a playable-now turn if any. */
@@ -751,14 +828,7 @@ function uiOptions(): { steps: Step[]; finish: MoveTurn | null } {
     if (!compatible(t)) continue;
     const ss = stepsFor(t);
     if (ss.length === 0) finish ??= t;
-    for (const s of ss) {
-      if (
-        !steps.some(
-          (o) => o.kind === s.kind && o.sq === s.sq && o.dome === s.dome,
-        )
-      )
-        steps.push(s);
-    }
+    mergeVisibleSteps(steps, ss);
   }
   return { steps, finish };
 }
@@ -767,6 +837,7 @@ function applyStep(s: Step): void {
   choice = null;
   if (s.kind === 'pre') pre.push({ at: s.sq, dome: s.dome });
   else if (s.kind === 'move') path.push(s.sq);
+  else if (s.kind === 'moveOther') otherPath.push(s.sq);
   else blds.push({ at: s.sq, dome: s.dome });
   const { steps, finish } = uiOptions();
   // Nothing further is possible: the turn is fully determined — play it.
@@ -801,7 +872,10 @@ function handlePlayCellClick(s: GameState, sq: Square): void {
     const w = workerAt(s, sq);
     const bareSame = path.length === 1 && path[0] === sq && pre.length === 0;
     resetSelection();
-    if (w >= 0 && ownerOf(w) === s.player && !bareSame) path = [sq];
+    if (w >= 0 && ownerOf(w) === s.player && !bareSame) {
+      path = [sq];
+      otherPath = [s.workers[companionWorker(w)] as Square];
+    }
   }
 }
 
@@ -870,6 +944,7 @@ interface CellRenderCtx {
   state: GameState;
   disp: Uint8Array;
   workerPos: Square | null;
+  otherWorkerPos: Square | null;
   partialBuilds: BuildAction[];
   steps: Step[];
   coachThreats: Set<Square>;
@@ -890,15 +965,19 @@ function cellWorkerSvg(
   s: GameState,
   sq: Square,
   workerPos: Square | null,
+  otherWorkerPos: Square | null,
 ): string {
   let svg = '';
   const w = workerAt(s, sq);
   if (w >= 0) {
     const movedAway = path.length > 1 && sq === path[0];
-    svg += workerCircle(sq, ownerOf(w), movedAway);
+    const otherMovedAway = otherPath.length > 1 && sq === otherPath[0];
+    svg += workerCircle(sq, ownerOf(w), movedAway || otherMovedAway);
   }
   if (sq === pendingPlace) svg += workerCircle(sq, s.player, true);
   if (path.length > 1 && sq === workerPos)
+    svg += workerCircle(sq, s.player, true);
+  if (otherPath.length > 1 && sq === otherWorkerPos)
     svg += workerCircle(sq, s.player, true);
   return svg;
 }
@@ -907,6 +986,7 @@ function cellWorkerSvg(
 function cellMarkersSvg(sq: Square, ctx: CellRenderCtx): string {
   const {
     workerPos,
+    otherWorkerPos,
     partialBuilds,
     steps,
     coachThreats,
@@ -917,13 +997,23 @@ function cellMarkersSvg(sq: Square, ctx: CellRenderCtx): string {
   if (workerPos === sq && blds.length === 0) {
     svg += `<circle cx="${cx(sq)}" cy="${cy(sq)}" r="21" fill="none" stroke="var(--accent)" stroke-width="3" pointer-events="none"/>`;
   }
+  if (otherPath.length > 0 && otherWorkerPos === sq && blds.length === 0) {
+    svg += `<circle cx="${cx(sq)}" cy="${cy(sq)}" r="21" fill="none" stroke="var(--worker2)" stroke-width="3" pointer-events="none"/>`;
+  }
   if (partialBuilds.some((b) => b.at === sq)) {
     svg += `<circle cx="${cx(sq)}" cy="${cy(sq)}" r="26" fill="none" stroke="var(--build)" stroke-width="3" opacity="0.8" pointer-events="none"/>`;
   }
   if (steps.some((st) => st.kind === 'move' && st.sq === sq)) {
     svg += `<circle cx="${cx(sq)}" cy="${cy(sq)}" r="9" fill="var(--accent)" opacity="0.9" pointer-events="none"/>`;
   }
-  if (steps.some((st) => st.kind !== 'move' && st.sq === sq)) {
+  if (steps.some((st) => st.kind === 'moveOther' && st.sq === sq)) {
+    svg += `<circle cx="${cx(sq)}" cy="${cy(sq)}" r="9" fill="var(--worker2)" opacity="0.9" pointer-events="none"/>`;
+  }
+  if (
+    steps.some(
+      (st) => (st.kind === 'pre' || st.kind === 'build') && st.sq === sq,
+    )
+  ) {
     svg += `<circle cx="${cx(sq)}" cy="${cy(sq)}" r="13" fill="none" stroke="var(--build)" stroke-width="4" stroke-dasharray="5 4" pointer-events="none"/>`;
   }
   if (coachThreats.has(sq)) {
@@ -940,19 +1030,37 @@ function cellMarkersSvg(sq: Square, ctx: CellRenderCtx): string {
 
 function cellSvg(sq: Square, ctx: CellRenderCtx): string {
   let svg = cellBaseSvg(sq, ctx.disp);
-  svg += cellWorkerSvg(ctx.state, sq, ctx.workerPos);
+  svg += cellWorkerSvg(ctx.state, sq, ctx.workerPos, ctx.otherWorkerPos);
   svg += cellMarkersSvg(sq, ctx);
   svg += '</g>';
   return svg;
 }
 
-function render(): void {
-  const s = viewState();
-  const { steps, finish } = uiOptions();
-  const partialBuilds = [...pre, ...blds];
+/**
+ * Sync the "Move worker 2" toggle button: a Hermes-only affordance, shown
+ * only once a worker is selected (otherPath's start square is derived from
+ * it), that switches which buffer (path/blds vs otherPath) clicks extend.
+ */
+function updateMoveOtherButton(s: GameState): void {
+  moveOtherEl.hidden =
+    view !== null ||
+    s.phase !== 'play' ||
+    path.length === 0 ||
+    s.gods[s.player] !== 'hermes';
+  moveOtherEl.textContent = otherMode
+    ? 'Done moving worker 2'
+    : 'Move worker 2';
+  moveOtherEl.classList.toggle('active', otherMode);
+}
 
-  // Coach: drop a hint the moment the displayed position changes; one-ply
-  // facts (win/threat squares) are cheap enough to recompute every render.
+/** Coach overlays for the displayed position: threats, wins, and the last hint. */
+function computeCoachDisplay(s: GameState): {
+  coachThreats: Set<Square>;
+  coachWins: Set<Square>;
+  hintSquares: Set<Square>;
+} {
+  // Drop the hint the moment the displayed position changes; one-ply facts
+  // (win/threat squares) are cheap enough to recompute every render.
   if (hint && hintKey !== coachKey()) hint = null;
   const coachThreats = new Set(
     coachOn && s.phase === 'play' ? threatSquares(s) : [],
@@ -962,17 +1070,27 @@ function render(): void {
       ? winningTurns(s).map((t) => t.path[t.path.length - 1])
       : [],
   );
-  const hintSquares = hintSquaresFor(hint);
+  return { coachThreats, coachWins, hintSquares: hintSquaresFor(hint) };
+}
+
+function render(): void {
+  const s = viewState();
+  const { steps, finish } = uiOptions();
+  const partialBuilds = [...pre, ...blds];
+  const { coachThreats, coachWins, hintSquares } = computeCoachDisplay(s);
 
   // Heights as they'll look after this turn's builds so far.
   const disp = s.heights.slice();
   for (const b of partialBuilds) disp[b.at] = b.dome ? 4 : disp[b.at] + 1;
 
   const workerPos = path.length > 0 ? path[path.length - 1] : null;
+  const otherWorkerPos =
+    otherPath.length > 0 ? otherPath[otherPath.length - 1] : null;
   const ctx: CellRenderCtx = {
     state: s,
     disp,
     workerPos,
+    otherWorkerPos,
     partialBuilds,
     steps,
     coachThreats,
@@ -985,6 +1103,7 @@ function render(): void {
 
   finishEl.hidden = finish === null;
   cancelEl.hidden = path.length === 0 && pendingPlace === null;
+  updateMoveOtherButton(s);
   undoEl.disabled = view !== null;
   revStartEl.disabled = revBackEl.disabled = viewPos() === 0;
   revFwdEl.disabled = revEndEl.disabled = view === null;
@@ -1005,6 +1124,7 @@ function render(): void {
 function stepLabel(st: Step): string {
   const at = squareName(st.sq);
   if (st.kind === 'move') return `Move to ${at}`;
+  if (st.kind === 'moveOther') return `Move worker 2 to ${at}`;
   const what = st.dome ? 'dome' : 'block';
   return st.kind === 'pre'
     ? `Build ${what} at ${at} before moving`
@@ -1092,6 +1212,8 @@ function turnStatusParts(steps: Step[], finish: MoveTurn | null): string[] {
   const kinds = new Set(steps.map((st) => st.kind));
   const parts: string[] = [];
   if (kinds.has('move')) parts.push(path.length > 1 ? 'move again' : 'move');
+  if (kinds.has('moveOther'))
+    parts.push(otherPath.length > 1 ? 'move worker 2 again' : 'move worker 2');
   if (kinds.has('pre')) parts.push('build before moving');
   if (kinds.has('build')) parts.push(blds.length > 0 ? 'build again' : 'build');
   if (finish) parts.push('finish the turn');
