@@ -8,6 +8,7 @@ export interface Position {
   p1: [string, string];
   player?: Player;
   gods?: [GodId, GodId];
+  athenaUp?: boolean;
 }
 
 /** Build a mid-game state declaratively (phase = 'play'). */
@@ -15,6 +16,7 @@ export function pos(spec: Position): GameState {
   const s = createInitialState({ gods: spec.gods ?? ['none', 'none'] });
   s.phase = 'play';
   s.player = spec.player ?? 0;
+  s.athenaUp = spec.athenaUp ?? false;
   for (const [name, level] of Object.entries(spec.heights ?? {})) {
     s.heights[parseSquareName(name)] = level;
   }
