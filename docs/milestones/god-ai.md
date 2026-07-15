@@ -137,7 +137,7 @@ artifacts** — do not ship them.
   (ai 112, engine 57, trainer 10). PR #44 merged as `T3 done(#44)`.
   Stale merged worktrees from T1/T2/T3/both T4 attempts cleaned up.
 
-### T5 — self-play god wiring (thin slice of issue #17) — `in-progress(subagent, branch feat/selfplay-gods)`
+### T5 — self-play god wiring (thin slice of issue #17) — `done(#53)`
 - Goal: `gods?: [GodId, GodId]` on `SelfPlayConfig` threaded to
   `createInitialState`; `--gods a,b` **and** a pool-sampling mode
   (`--god-pool none,pan,athena,apollo,minotaur,artemis` → seeded matchup
@@ -146,8 +146,23 @@ artifacts** — do not ship them.
 - Done when: a 10-game god self-play run produces SGN dumps that
   replay-verify with the right God headers, and samples have 295
   features. Branch: `feat/selfplay-gods`.
+- Delivered as designed: `SelfPlayConfig.gods`/`.featureEncoding`,
+  `--gods`/`--god-pool` (seeded per-game matchup sampling, independent
+  uniform-with-replacement draw per seat), `assertV2TrainingSupported`
+  guard rejecting an `mlp@2`/`pv@2` parent before self-play runs (net
+  training still assumes v1 dims — silent truncation would train a value
+  net blind to its own god one-hots). Differential script confirmed
+  base-game self-play byte-identical pre/post. Main loop independently
+  reread the full diff (`selfplay.ts`, `cli.ts`), reran
+  typecheck/lint/test from a clean worktree (199/199 green), and
+  confirmed the new subprocess-level CLI test actually replay-verifies
+  SGN dumps rather than just checking exit codes, before merging.
+- **Flagged by T5, not decided unilaterally (routine scope note, not one
+  of the four reserved design decisions — accepted as-is):** no path
+  exists yet to create an `mlp@2`/`pv@2` parent checkpoint — T6 will need
+  to originate the first v2 lineage itself.
 
-### T6 — slice-1 trial generation — `blocked(T1,T2,T5)`
+### T6 — slice-1 trial generation — `ready`
 - Goal: fresh `models/v2/gen-000` (from static parent, v2 encoding),
   small run (e.g. 200 games) over base + the free five via `--god-pool`;
   measure wall-clock multiplier vs the ~15–40 min baseline (TRAINING.md
@@ -156,6 +171,13 @@ artifacts** — do not ship them.
 - Done when: PROGRESS.md records the multiplier + ratings; artifacts under
   `models/v2/`; explicit note that slice-1 checkpoints are disposable.
 - Resumable: check for `models/v2/gen-000.json` before launching.
+- Note for the implementer (from T5): there is no existing tooling to
+  originate an `mlp@2` parent checkpoint (needed for v2-encoded
+  self-play samples) — this task will need to create one (e.g. a
+  freshly-initialized `Mlp`/`PolicyValueNet` sized to
+  `FEATURE_COUNT_V2`, wrapped via `createCheckpoint` with `eval.type:
+  'mlp@2'`), following the same shape T5's own test harness used to
+  construct a synthetic `mlp@2` checkpoint for verification.
 
 ## Slice 2 — policy v2 and the real run
 
