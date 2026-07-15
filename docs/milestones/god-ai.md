@@ -162,7 +162,7 @@ artifacts** — do not ship them.
   exists yet to create an `mlp@2`/`pv@2` parent checkpoint — T6 will need
   to originate the first v2 lineage itself.
 
-### T6 — slice-1 trial generation — `ready`
+### T6 — slice-1 trial generation — `in-progress(subagent, branch feat/god-ai-t6-trial)`
 - Goal: fresh `models/v2/gen-000` (from static parent, v2 encoding),
   small run (e.g. 200 games) over base + the free five via `--god-pool`;
   measure wall-clock multiplier vs the ~15–40 min baseline (TRAINING.md
