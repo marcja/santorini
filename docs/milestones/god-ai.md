@@ -111,6 +111,16 @@ artifacts** — do not ship them.
 - Launched 2026-07-14 against PR #44 (`feat/features-v2`). Run ID
   `wf_84fc6910-e92` — resume with `resumeFromRunId` if interrupted, never
   rerun from scratch.
+- **Blocked 2026-07-14: both review agents (adversarial-correctness,
+  implementation-quality) failed with "monthly spend limit" API errors
+  before producing any findings.** This is an account-level cap, not a
+  task problem — needs the user to raise it at claude.ai/settings/usage
+  before this can proceed. Caution for the next attempt: per-agent()
+  results that error out are cached as `null`, so plain
+  `resumeFromRunId: wf_84fc6910-e92` may just replay those nulls instead
+  of retrying — check `journal.jsonl` first; if both agent entries show
+  `null`, launch a **fresh** Workflow run against PR #44 rather than
+  resuming this one. PR #44 remains a draft, untouched, pending this.
 
 ### T5 — self-play god wiring (thin slice of issue #17) — `blocked(T3)`
 - Goal: `gods?: [GodId, GodId]` on `SelfPlayConfig` threaded to
@@ -164,6 +174,13 @@ artifacts** — do not ship them.
   recommendation (include now / optimize first / defer) recorded here as
   `human(...)` for sign-off. A movegen fix, if attempted, is its own task
   with full adversarial review (CLAUDE.md).
+- **Attempted 2026-07-14, inconclusive: the subagent hit the same
+  "monthly spend limit" API error mid-run**, after only an unverified
+  interim remark ("that's a dramatic slowdown for Hermes... rerun to
+  confirm stability") — not a real measurement, don't treat it as one.
+  Nothing was committed (this was a scratchpad-only measurement task
+  with no code deliverable). Re-run fresh once the spend limit is
+  raised; still `ready`.
 
 ### T11 — Hermes joins the pool — `blocked(T9,T10)` (encoding already reserves H6)
 ### T12 — Hermes two-worker web UI (issue #35) — `ready` (low priority, independent; in-browser verification required)
