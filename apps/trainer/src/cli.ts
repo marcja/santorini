@@ -73,9 +73,10 @@ player specs: random | greedy | mcts:ITERS[,c=F][,depth=N] | ckpt:PATH[,iters=N]
 
 --gods god1,god2: gods for board seats 0/1 (default none,none = base game).
 Seat alternation swaps which player sits in each seat, so the god stays
-attached to the seat, not to a given player. ckpt: player specs are
-rejected under any non-none --gods (see the error message) until encoding
-v2 lands.
+attached to the seat, not to a given player. ckpt: player specs pointing at
+a v1 checkpoint (static@1/mlp@1/pv@1 — no god/state-flag planes) are
+rejected under any non-none --gods (see the error message); mlp@2/pv@2
+checkpoints (encoding v2) are god-aware and allowed.
 
 trainer train's self-play generation additionally accepts:
 --god-pool god1,god2,...: seeded per-game matchup sampling — each self-play
@@ -189,21 +190,30 @@ function isV2Eval(ev: CheckpointEval): boolean {
 }
 
 /**
- * ckpt: player specs encode positions under features v1, which has no
- * god/state-flag planes — under any non-base --gods they'd play silently
- * god-blind. Reject outright until encoding v2 (issue #18, T3) lands.
+ * `static@1`/`mlp@1`/`pv@1` ckpt: player specs encode positions under
+ * features v1, which has no god/state-flag planes — under any non-base
+ * --gods they'd play silently god-blind, so those are rejected outright.
+ * `mlp@2`/`pv@2` checkpoints (encoding v2, issue #18/T3, landed #44) do
+ * have god-aware planes and are allowed through — this is exactly the gap
+ * T6 (docs/milestones/god-ai.md) needs closed to rate a v2 checkpoint
+ * against baselines on non-base configurations via `gauntlet`/`calibrate`/
+ * `match`.
  */
 function assertNoCkptWithGods(specs: PlayerSpec[], gods: [GodId, GodId]): void {
   if (gods[0] === 'none' && gods[1] === 'none') return;
-  if (specs.some((s) => s.kind === 'ckpt')) {
-    throw new Error(
-      'ckpt: player specs are rejected under --gods: net players encode ' +
-        'positions with features v1, which has no god/state-flag planes, ' +
-        'so a checkpoint would play the configured gods silently god-blind. ' +
-        'God-aware training lands in encoding v2 (docs/milestones/' +
-        'god-ai-encoding-v2.md, issue #18); until then, use random, greedy, ' +
-        'or mcts players for non-base god configurations.',
-    );
+  for (const s of specs) {
+    if (s.kind !== 'ckpt') continue;
+    const ckpt = loadCheckpoint(s.path);
+    if (!isV2Eval(ckpt.eval)) {
+      throw new Error(
+        `ckpt: player spec ${s.path} (eval ${ckpt.eval.type}) is rejected ` +
+          'under --gods: it encodes positions with feature encoding v1, ' +
+          'which has no god/state-flag planes, so it would play the ' +
+          'configured gods silently god-blind. Use an mlp@2/pv@2 checkpoint ' +
+          '(encoding v2, docs/milestones/god-ai-encoding-v2.md) for god ' +
+          'configurations, or random/greedy/mcts players for a v1 checkpoint.',
+      );
+    }
   }
 }
 
