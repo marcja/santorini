@@ -137,7 +137,7 @@ artifacts** — do not ship them.
   (ai 112, engine 57, trainer 10). PR #44 merged as `T3 done(#44)`.
   Stale merged worktrees from T1/T2/T3/both T4 attempts cleaned up.
 
-### T5 — self-play god wiring (thin slice of issue #17) — `ready`
+### T5 — self-play god wiring (thin slice of issue #17) — `in-progress(subagent, branch feat/selfplay-gods)`
 - Goal: `gods?: [GodId, GodId]` on `SelfPlayConfig` threaded to
   `createInitialState`; `--gods a,b` **and** a pool-sampling mode
   (`--god-pool none,pan,athena,apollo,minotaur,artemis` → seeded matchup
