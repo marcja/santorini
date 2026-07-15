@@ -23,11 +23,15 @@ import {
   type EloRating,
   FEATURE_COUNT,
   Mlp,
+  mulberry32,
+  pick,
   type PlayerSpec,
   type PolicyFn,
   PolicyValueNet,
   parsePlayerSpec,
   playerFromSpec,
+  type SelfPlayConfig,
+  type SelfPlayGame,
   type SelfPlayResult,
   selfPlay,
   specName,
@@ -60,6 +64,7 @@ const USAGE = `usage:
                     [--seed 1] [--iters PARENT] [--temp-turns 8] [--max-half-turns 400]
                     [--hidden 64] [--epochs 10] [--lr 0.2] [--batch 64] [--augment]
                     [--pv] [--wd 0] [--sgn FILE] [--notes TEXT] [--force]
+                    [--gods god1,god2 | --god-pool god1,god2,...]
                     (--pv trains a policy+value net -> PUCT search; implied by a pv parent.
                      --wd = L2 weight decay, pv nets only)
 
@@ -70,7 +75,19 @@ player specs: random | greedy | mcts:ITERS[,c=F][,depth=N] | ckpt:PATH[,iters=N]
 Seat alternation swaps which player sits in each seat, so the god stays
 attached to the seat, not to a given player. ckpt: player specs are
 rejected under any non-none --gods (see the error message) until encoding
-v2 lands.`;
+v2 lands.
+
+trainer train's self-play generation additionally accepts:
+--god-pool god1,god2,...: seeded per-game matchup sampling — each self-play
+game independently draws two gods (with replacement) from the pool, seeded
+by --seed so pool runs are as reproducible as a fixed --gods run. Mutually
+exclusive with --gods. Self-play samples encode with feature encoding v2
+(295-wide, god-aware) when the parent checkpoint's eval type is mlp@2/pv@2,
+v1 (175-wide) otherwise — independent of whether gods are configured, since
+a v1 parent's static/mlp/pv eval has no god-aware planes to fill in. Net
+training after self-play still assumes v1 dimensions; a v2 parent is
+rejected with a clear error before self-play runs (policy encoding v2,
+issue #19/T7, lands training end-to-end).`;
 
 const DEFAULT_BASELINES = 'random greedy mcts:200 mcts:1000';
 /** Prime stride keeps per-pair seed ranges disjoint (games use seed+2i). */
@@ -125,6 +142,50 @@ function parseGodsFlag(raw: string | undefined): [GodId, GodId] {
     );
   }
   return [godIdByName(parts[0]), godIdByName(parts[1])];
+}
+
+/** Parse `--god-pool god1,god2,...` (case-insensitive god names/ids) into a
+ * pool of at least two entries for seeded per-game matchup sampling. */
+function parseGodPoolFlag(raw: string | undefined): GodId[] | undefined {
+  if (raw === undefined) return undefined;
+  const ids = raw.split(',').map((s) => godIdByName(s));
+  if (ids.length < 2) {
+    throw new Error(
+      `--god-pool needs at least two comma-separated god names, e.g. ` +
+        `--god-pool none,pan,athena (got ${JSON.stringify(raw)})`,
+    );
+  }
+  return ids;
+}
+
+/**
+ * Seeded per-game matchups for `--god-pool`: each game independently draws
+ * two gods (with replacement — mirror matchups like pan/pan are valid) from
+ * the pool, deterministic in `seed` so pool runs are as reproducible as
+ * fixed-`--gods` runs.
+ */
+function godPoolMatchups(
+  pool: GodId[],
+  games: number,
+  seed: number,
+): [GodId, GodId][] {
+  const rand = mulberry32(seed ^ 0x90d5);
+  return Array.from({ length: games }, () => [
+    pick(rand, pool),
+    pick(rand, pool),
+  ]);
+}
+
+/**
+ * `mlp@2`/`pv@2` checkpoints carry samples encoded under feature encoding v2
+ * (295-wide, god one-hots + state flags) — the same distinction
+ * `checkpoint.ts`'s `checkpointEvalFn`/`requireEvalParams` dispatch on for
+ * choosing an encoder/validating shapes (docs/milestones/
+ * god-ai-encoding-v2.md). Self-play must encode samples the same way the
+ * parent's own net was shaped for.
+ */
+function isV2Eval(ev: CheckpointEval): boolean {
+  return ev.type === 'mlp@2' || ev.type === 'pv@2';
 }
 
 /**
@@ -426,6 +487,71 @@ function cmdGauntlet(args: string[]): void {
   }
 }
 
+/**
+ * God configuration for a training self-play run: a fixed pair for the
+ * whole batch (`--gods`), a pool for seeded per-game matchup sampling
+ * (`--god-pool`), or neither (base game). Mutually exclusive — enforced by
+ * the CLI before this is constructed.
+ */
+interface GodSelection {
+  gods?: [GodId, GodId];
+  pool?: GodId[];
+}
+
+/**
+ * `mlp@2`/`pv@2` parents produce v2-encoded (295-wide, god-aware) self-play
+ * samples correctly (see `isV2Eval`/`SelfPlayConfig.featureEncoding`), but
+ * the net-training step below (`selectMlpNet`/`selectPvNet`,
+ * `trainMlpNet`/`trainPvNet`) still assumes v1 dimensions (`FEATURE_COUNT`/
+ * `ACTION_COUNT`) — training a v2 lineage end-to-end needs policy encoding
+ * v2 (issue #19/T7) for pv nets and v2-aware net sizing for mlp nets,
+ * neither of which has landed. Rather than silently truncating a 295-wide
+ * sample to the net's 175 inputs (real risk: `Mlp.forward`/`PolicyValueNet`
+ * only read `x[0..inputSize)`, so this would train a value net that's
+ * blind to the very god one-hots the samples exist to carry), fail loudly —
+ * the same convention `checkpointPolicyFn` uses for `pv@2` policy decoding.
+ */
+function assertV2TrainingSupported(parent: Checkpoint): void {
+  if (!isV2Eval(parent.eval)) return;
+  throw new Error(
+    `trainer train: parent eval type ${parent.eval.type} encodes features ` +
+      'under v2 (FEATURE_COUNT_V2=295) but net training still assumes v1 ' +
+      'dimensions (FEATURE_COUNT=175/ACTION_COUNT=225) — end-to-end v2 ' +
+      'training lands with policy encoding v2 (issue #19/T7) and v2-aware ' +
+      'net sizing; self-play generation itself is already v2-aware ' +
+      '(packages/ai/src/selfplay.ts), only this training step is blocked.',
+  );
+}
+
+/** Parse `--gods`/`--god-pool` (mutually exclusive) into a `GodSelection`
+ * for `trainer train` — factored out of `cmdTrain` to keep its own
+ * branching under the complexity cap (mirrors `requireEvalParams`'s note in
+ * checkpoint.ts). */
+function parseTrainGodFlags(
+  godsRaw: string | undefined,
+  godPoolRaw: string | undefined,
+): GodSelection {
+  if (godsRaw !== undefined && godPoolRaw !== undefined) {
+    throw new Error('--gods and --god-pool are mutually exclusive');
+  }
+  if (godPoolRaw !== undefined) return { pool: parseGodPoolFlag(godPoolRaw) };
+  return { gods: godsRaw !== undefined ? parseGodsFlag(godsRaw) : undefined };
+}
+
+/** Self-play for one game index under `--god-pool`: seeded matchup, single
+ * game, seeded identically to how a fixed-gods batch would seed game `i`. */
+function runPooledSelfPlayGame(
+  baseConfig: Omit<SelfPlayConfig, 'games' | 'seed' | 'gods'>,
+  seed: number,
+  i: number,
+  gods: [GodId, GodId],
+  onGame: (game: SelfPlayGame, index: number) => void,
+): SelfPlayResult {
+  return selfPlay({ ...baseConfig, games: 1, seed: seed + 2 * i, gods }, (g) =>
+    onGame(g, i),
+  );
+}
+
 /** Run self-play with the parent's search/eval config, logging progress. */
 function runTrainingSelfPlay(
   parent: Checkpoint,
@@ -434,33 +560,54 @@ function runTrainingSelfPlay(
   iterations: number,
   tempTurnsRaw: string,
   maxHalfTurnsRaw: string,
+  godSelection: GodSelection,
 ): { result: SelfPlayResult; parentPolicy: PolicyFn | null } {
   const parentPolicy = checkpointPolicyFn(parent.eval);
+  const featureEncoding = isV2Eval(parent.eval) ? 'v2' : 'v1';
+  const baseConfig: Omit<SelfPlayConfig, 'games' | 'seed' | 'gods'> = {
+    search: { ...parent.search, iterations },
+    evaluate: checkpointEvalFn(parent.eval),
+    ...(parentPolicy ? { policy: parentPolicy } : {}),
+    temperatureTurns: int('temp-turns', tempTurnsRaw),
+    maxHalfTurns: int('max-half-turns', maxHalfTurnsRaw),
+    featureEncoding,
+  };
+  const godsLabel = godSelection.pool
+    ? `, god-pool [${godSelection.pool.join(',')}]`
+    : godSelection.gods
+      ? `, gods ${describeGods(godSelection.gods)}`
+      : '';
   console.log(
     `self-play: ${games} games, mcts ${iterations} iters` +
       (parentPolicy ? ' (PUCT)' : '') +
-      `, eval ${parent.eval.type} (gen ${parent.generation})`,
+      `, eval ${parent.eval.type} (gen ${parent.generation})${godsLabel}`,
   );
   const started = Date.now();
   let decided = 0;
-  const result = selfPlay(
-    {
-      games,
-      seed,
-      search: { ...parent.search, iterations },
-      evaluate: checkpointEvalFn(parent.eval),
-      ...(parentPolicy ? { policy: parentPolicy } : {}),
-      temperatureTurns: int('temp-turns', tempTurnsRaw),
-      maxHalfTurns: int('max-half-turns', maxHalfTurnsRaw),
-    },
-    (game, i) => {
-      if (game.winner !== null) decided++;
-      console.log(
-        `game ${String(i + 1).padStart(String(games).length)}/${games}  ` +
-          `${game.winner === null ? 'draw' : `P${game.winner + 1} wins`} in ${game.sgn.length} half-turns`,
-      );
-    },
-  );
+  const onGame = (game: SelfPlayGame, i: number): void => {
+    if (game.winner !== null) decided++;
+    const godsTag =
+      game.gods[0] !== 'none' || game.gods[1] !== 'none'
+        ? `  [${game.gods[0]},${game.gods[1]}]`
+        : '';
+    console.log(
+      `game ${String(i + 1).padStart(String(games).length)}/${games}  ` +
+        `${game.winner === null ? 'draw' : `P${game.winner + 1} wins`} in ${game.sgn.length} half-turns${godsTag}`,
+    );
+  };
+
+  const result: SelfPlayResult = godSelection.pool
+    ? godPoolMatchups(godSelection.pool, games, seed).reduce<SelfPlayResult>(
+        (acc, gods, i) => {
+          const one = runPooledSelfPlayGame(baseConfig, seed, i, gods, onGame);
+          acc.games.push(...one.games);
+          acc.samples.push(...one.samples);
+          return acc;
+        },
+        { games: [], samples: [] },
+      )
+    : selfPlay({ ...baseConfig, games, seed, gods: godSelection.gods }, onGame);
+
   console.log(
     `${decided}/${games} decided, ${result.samples.length} samples ` +
       `in ${((Date.now() - started) / 1000).toFixed(1)}s`,
@@ -609,6 +756,8 @@ function cmdTrain(args: string[]): void {
       pv: { type: 'boolean', default: false },
       // L2 weight decay (pv nets only) — the regularization lever.
       wd: { type: 'string', default: '0' },
+      gods: { type: 'string' },
+      'god-pool': { type: 'string' },
       sgn: { type: 'string' },
       notes: { type: 'string' },
       force: { type: 'boolean', default: false },
@@ -620,6 +769,8 @@ function cmdTrain(args: string[]): void {
     values.out ?? `models/gen-${String(generation).padStart(3, '0')}.json`;
   if (existsSync(out) && !values.force)
     throw new Error(`${out} exists (use --force to overwrite)`);
+  const godSelection = parseTrainGodFlags(values.gods, values['god-pool']);
+  assertV2TrainingSupported(parent);
   const games = int('games', values.games);
   const seed = int('seed', values.seed);
   const iterations =
@@ -635,6 +786,7 @@ function cmdTrain(args: string[]): void {
     iterations,
     values['temp-turns'],
     values['max-half-turns'],
+    godSelection,
   );
 
   maybeWriteSelfPlaySgn(values.sgn, parent, seed, result);
