@@ -102,25 +102,23 @@ artifacts** — do not ship them.
 - Rigor: training-critical → differential script before/after; T4 review
   before done; main loop reads the diff. Branch: `feat/features-v2`.
 
-### T4 — adversarial review of T3 — `in-progress(workflow wf_84fc6910-e92)`
+### T4 — adversarial review of T3 — `in-progress(workflow wf_f9566364-47e)`
 - Dynamic Workflow: adversarial correctness reviewer (against the manifest
   + `docs/reference/rulebook.md` for the state-flag semantics, instructed
   to construct counterexamples) + implementation-quality reviewer + fixer;
   independently re-verify the fixer's output (CLAUDE.md guardrails).
   Record the Workflow runId here when launched.
-- Launched 2026-07-14 against PR #44 (`feat/features-v2`). Run ID
-  `wf_84fc6910-e92` — resume with `resumeFromRunId` if interrupted, never
-  rerun from scratch.
-- **Blocked 2026-07-14: both review agents (adversarial-correctness,
-  implementation-quality) failed with "monthly spend limit" API errors
-  before producing any findings.** This is an account-level cap, not a
-  task problem — needs the user to raise it at claude.ai/settings/usage
-  before this can proceed. Caution for the next attempt: per-agent()
-  results that error out are cached as `null`, so plain
-  `resumeFromRunId: wf_84fc6910-e92` may just replay those nulls instead
-  of retrying — check `journal.jsonl` first; if both agent entries show
-  `null`, launch a **fresh** Workflow run against PR #44 rather than
-  resuming this one. PR #44 remains a draft, untouched, pending this.
+- First attempt 2026-07-14, run ID `wf_84fc6910-e92`: both review agents
+  failed with "monthly spend limit" API errors before producing any
+  findings (journal.jsonl showed `started` with no result for either
+  agent — confirmed dead, not resumable).
+- **Relaunched fresh 2026-07-14 (next session), run ID `wf_f9566364-47e`**,
+  same script (`god-ai-t4-review-wf_84fc6910-e92.js`), against PR #44
+  (`feat/features-v2`). Resume with `resumeFromRunId: wf_f9566364-47e` if
+  interrupted — check `journal.jsonl` first; if agent entries show `null`
+  again, the spend limit is still in effect and this needs the user to
+  raise it at claude.ai/settings/usage before another attempt. PR #44
+  remains a draft, untouched, pending this.
 
 ### T5 — self-play god wiring (thin slice of issue #17) — `blocked(T3)`
 - Goal: `gods?: [GodId, GodId]` on `SelfPlayConfig` threaded to
@@ -168,7 +166,7 @@ artifacts** — do not ship them.
 
 ## Slice 3 — Hermes fast-follow
 
-### T10 — Hermes throughput measurement (issue #36) — `ready`
+### T10 — Hermes throughput measurement (issue #36) — `in-progress(subagent, this session)`
 - Standalone scratchpad bench (mirror `packages/engine/bench/playouts.ts`)
   + an MCTS-shaped probe (children per expansion at mcts:600). Output: a
   recommendation (include now / optimize first / defer) recorded here as
@@ -179,11 +177,12 @@ artifacts** — do not ship them.
   interim remark ("that's a dramatic slowdown for Hermes... rerun to
   confirm stability") — not a real measurement, don't treat it as one.
   Nothing was committed (this was a scratchpad-only measurement task
-  with no code deliverable). Re-run fresh once the spend limit is
-  raised; still `ready`.
+  with no code deliverable). Re-attempted 2026-07-14 (next session) via
+  a fresh subagent — no code deliverable expected, only a recommendation
+  to record here as `human(...)` once it reports back.
 
 ### T11 — Hermes joins the pool — `blocked(T9,T10)` (encoding already reserves H6)
-### T12 — Hermes two-worker web UI (issue #35) — `ready` (low priority, independent; in-browser verification required)
+### T12 — Hermes two-worker web UI (issue #35) — `in-progress(subagent, this session)` (low priority, independent; in-browser verification required)
 
 ## Slice 4 — god-draft AI (issue #39)
 
