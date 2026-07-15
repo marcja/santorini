@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { evaluate } from '../src/eval.ts';
-import { FEATURE_COUNT } from '../src/features.ts';
+import { FEATURE_COUNT, FEATURE_COUNT_V2 } from '../src/features.ts';
 import { ACTION_COUNT } from '../src/policy.ts';
 import { selfPlay, type SelfPlayConfig } from '../src/selfplay.ts';
 
@@ -48,5 +48,53 @@ describe('selfPlay', () => {
 
     const c = selfPlay({ ...CONFIG, seed: 6 });
     expect(c.games.map((g) => g.sgn)).not.toEqual(a.games.map((g) => g.sgn));
+  });
+});
+
+// T5 (issue #17 thin slice): gods threaded to createInitialState, and
+// samples switch to feature encoding v2 only when explicitly requested
+// (mirroring how a v2 parent checkpoint's eval type drives cli.ts's choice
+// — see checkpoint.ts's mlp@2/pv@2 dispatch).
+describe('selfPlay with gods', () => {
+  it('defaults every game to the base game (no gods) when omitted', () => {
+    const { games } = selfPlay(CONFIG);
+    for (const g of games) expect(g.gods).toEqual(['none', 'none']);
+  });
+
+  it('threads a fixed god pair to every game and its samples', () => {
+    const { games } = selfPlay({ ...CONFIG, gods: ['pan', 'athena'] });
+    for (const g of games) expect(g.gods).toEqual(['pan', 'athena']);
+  });
+
+  it('stays v1-width (175) by default even under a god config — a v1 ' +
+    'parent has no god-aware planes regardless of what gods are played', () => {
+    const { samples } = selfPlay({
+      ...CONFIG,
+      gods: ['pan', 'athena'],
+      games: 3,
+    });
+    expect(samples.length).toBeGreaterThan(0);
+    for (const s of samples) expect(s.x.length).toBe(FEATURE_COUNT);
+  });
+
+  it('encodes 295-wide (v2) samples when featureEncoding is v2, independent of gods', () => {
+    const { samples } = selfPlay({
+      ...CONFIG,
+      games: 3,
+      featureEncoding: 'v2',
+    });
+    expect(samples.length).toBeGreaterThan(0);
+    for (const s of samples) expect(s.x.length).toBe(FEATURE_COUNT_V2);
+  });
+
+  it('produces v2 samples for a god game too', () => {
+    const { samples } = selfPlay({
+      ...CONFIG,
+      games: 3,
+      gods: ['minotaur', 'apollo'],
+      featureEncoding: 'v2',
+    });
+    expect(samples.length).toBeGreaterThan(0);
+    for (const s of samples) expect(s.x.length).toBe(FEATURE_COUNT_V2);
   });
 });

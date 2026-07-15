@@ -1,13 +1,15 @@
-import type { Player } from '@santorini/engine';
+import type { GameState, GodId, Player } from '@santorini/engine';
 import { createInitialState, formatTurn } from '@santorini/engine';
 import type { SearchConfig } from './checkpoint.ts';
 import type { EvalFn } from './eval.ts';
-import { encodeFeatures } from './features.ts';
+import { encodeFeatures, encodeFeaturesV2 } from './features.ts';
 import { MctsPlayer, type SearchResult } from './mcts.ts';
 import { resolveTurn } from './player.ts';
 import { type PolicyFn, turnAction } from './policy.ts';
 import type { PvSample } from './pvnet.ts';
 import { mulberry32 } from './rng.ts';
+
+const NO_GODS: [GodId, GodId] = ['none', 'none'];
 
 // Self-play data generation: the current checkpoint's searcher plays itself;
 // every play-phase position becomes a training sample labeled with the final
@@ -30,6 +32,26 @@ export interface SelfPlayConfig {
   temperatureTurns?: number;
   /** Games longer than this are labeled 0.5 for both sides. */
   maxHalfTurns?: number;
+  /**
+   * Gods for board seats 0/1 (default: base game, no gods), threaded to
+   * `createInitialState`. A fixed pair for the whole batch — per-game
+   * matchup variety (e.g. `trainer train --god-pool`) is composed by callers
+   * making repeated single/small-batch `selfPlay` calls with different
+   * `gods`, not by this config (mirrors T2's `RunConfig.gods`).
+   */
+  gods?: [GodId, GodId];
+  /**
+   * Feature encoding samples are produced with (`x`'s width). Defaults to
+   * v1 (`FEATURE_COUNT` = 175). Pass `'v2'` when the parent checkpoint's
+   * eval type is `mlp@2`/`pv@2` (`FEATURE_COUNT_V2` = 295, god one-hots +
+   * state flags — docs/milestones/god-ai-encoding-v2.md) — the same
+   * distinction `checkpoint.ts`'s `checkpointEvalFn` uses to pick an
+   * encoder. Independent of `gods`: a v1 parent playing a god config still
+   * produces god-blind v1 samples (the static eval understands gods
+   * directly; the v1 planes don't), while a v2 parent produces v2 samples
+   * even in the base game.
+   */
+  featureEncoding?: 'v1' | 'v2';
 }
 
 export interface SelfPlayGame {
@@ -37,6 +59,8 @@ export interface SelfPlayGame {
   winner: Player | null;
   /** SGN turn strings in play order — dumpable for replay/debugging. */
   sgn: string[];
+  /** Gods for board seats 0/1 this game was played under (see `RunConfig.gods` in apps/trainer/src/run.ts). */
+  gods: [GodId, GodId];
 }
 
 export interface SelfPlayResult {
@@ -88,6 +112,9 @@ export function selfPlay(
 ): SelfPlayResult {
   const temperatureTurns = config.temperatureTurns ?? 8;
   const maxHalfTurns = config.maxHalfTurns ?? 400;
+  const gods = config.gods ?? NO_GODS;
+  const encode =
+    config.featureEncoding === 'v2' ? encodeFeaturesV2 : encodeFeatures;
   const rand = mulberry32(config.seed ^ 0x5e1f);
   const games: SelfPlayGame[] = [];
   const samples: PvSample[] = [];
@@ -99,6 +126,8 @@ export function selfPlay(
       rand,
       temperatureTurns,
       maxHalfTurns,
+      gods,
+      encode,
     );
     samples.push(...played.samples);
     games.push(played.game);
@@ -132,15 +161,17 @@ function playOneSelfPlayGame(
   rand: () => number,
   temperatureTurns: number,
   maxHalfTurns: number,
+  gods: [GodId, GodId],
+  encode: (state: GameState) => Float32Array,
 ): { game: SelfPlayGame; samples: PvSample[] } {
-  let state = createInitialState();
+  let state = createInitialState({ gods });
   const sgn: string[] = [];
   const seen: SeenPosition[] = [];
   while (state.phase !== 'over' && sgn.length < maxHalfTurns) {
     const result = players[state.player].search(state);
     if (state.phase === 'play') {
       seen.push({
-        x: encodeFeatures(state),
+        x: encode(state),
         mover: state.player,
         ...policyTarget(result),
       });
@@ -157,5 +188,5 @@ function playOneSelfPlayGame(
     actions,
     targets,
   }));
-  return { game: { winner, sgn }, samples };
+  return { game: { winner, sgn, gods }, samples };
 }
