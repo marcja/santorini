@@ -617,11 +617,24 @@ rungs (random 0 / mcts(200) 657 / greedy 808 / gen-003 903).
    before Hermes joins the self-play pool. **Awaiting human sign-off**
    on this (Hermes pool inclusion is a design decision, not the loop's
    to make) — see `docs/milestones/god-ai.md` T10.
-   **T12 (Hermes web UI) in progress** as a background subagent.
-   **T5 (self-play god wiring) ready and picked up** this session now
-   that T3 has merged; T7 (policy encoding v2) is also unblocked but
-   shares `selfplay.ts` with T5 so it's held for a later iteration
-   rather than run in parallel.
+   **T12 done (#54, 2026-07-15):** Hermes two-worker web UI. A "Move
+   worker 2" toggle lets `compatible()`/`stepsFor()` match clicks against
+   `otherPath`; the implementing subagent's isolated worktree couldn't
+   reach the browser preview (bound to a fixed worktree for the session)
+   so it correctly declined risky workarounds and handed off — the main
+   loop did the in-browser Hermes-vs-Hermes playthrough directly,
+   including a two-worker relocation (`e5-d4~a1-b1^a2` SGN, matching
+   `docs/NOTATION.md`), replay-verified via SGN export/load round-trip.
+   **T5 done (#53, 2026-07-15):** self-play god wiring. `SelfPlayConfig`
+   gains `gods`/`featureEncoding`; `trainer train` gains `--gods`/
+   `--god-pool` (seeded per-game matchup sampling); a v2-training guard
+   rejects an `mlp@2`/`pv@2` parent before self-play runs rather than
+   silently truncating 295-wide samples to a v1-sized net. Differential
+   script confirmed base-game self-play unchanged; main loop reread the
+   full diff and reran typecheck/lint/test (199/199 green) before
+   merging. **T6 (slice-1 trial generation) now ready** — needs to
+   originate the first `mlp@2` parent checkpoint itself (T5 flagged that
+   no tooling for this exists yet).
    Issues synced to the plan 2026-07-14: alignment comments on #17–#26 +
    #35/#36, #27 closed as delivered, god-draft AI filed as #39.
 10. Follow-on milestone after that: ship the god-aware checkpoint to
